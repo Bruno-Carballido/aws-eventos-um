@@ -93,6 +93,12 @@ Resources:
               Action: [sns:CreateTopic, sns:Subscribe, sns:Publish, sns:ListTopics]
               Resource: '*'
 
+  ColaDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: recordatorio-dlq
+      MessageRetentionPeriod: 1209600   # 14 dias
+
   Recordatorio:
     Type: AWS::Serverless::Function
     Properties:
@@ -101,9 +107,15 @@ Resources:
       Events:
         Programado:
           Type: Schedule
-          Properties: { Schedule: rate(1 hour) }
+          Properties:
+            Schedule: rate(1 hour)
+            DeadLetterConfig: { Type: SQS, Arn: !GetAtt ColaDLQ.Arn }
+            RetryPolicy:
+              MaximumRetryAttempts: 2
+              MaximumEventAgeInSeconds: 3600
       Policies:
         - DynamoDBReadPolicy: { TableName: !Ref TablaEventos }
+        - SQSSendMessagePolicy: { QueueName: !GetAtt ColaDLQ.QueueName }
         - Statement:
             - Effect: Allow
               Action: [sns:Publish, sns:ListTopics]

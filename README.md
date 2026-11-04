@@ -24,6 +24,8 @@ Cada Lambda loguea en CloudWatch Logs.
 - **SNS**: un topic por evento; los inscriptos se suscriben con su email.
 - **EventBridge Scheduler**: dispara el recordatorio cada 1 hora; solo notifica
   eventos dentro de las próximas 24 h y marca `notificado` para no repetir.
+- **SQS (DLQ)**: cola muerta `recordatorio-dlq` para los eventos programados que
+  fallen tras 2 reintentos; permite investigar fallos sin perder el evento.
 - **CloudWatch**: logs y errores de las tres funciones.
 
 ## Despliegue (AWS Academy Learner Lab)
@@ -60,8 +62,20 @@ web/index.html         # página estática
 scripts/seed_eventos.py
 ```
 
-## Notas de diseño
+## Notas de diseño (arquitectura orientada a eventos)
 
+- La inscripción se modela como un *domain event* (`InscripcionCreada`): la API
+  responde apenas se registra, y la confirmación se procesa de forma asíncrona
+  vía SNS — desacoplando el flujo de la respuesta HTTP.
+- **Idempotencia**: dedup por email+evento en la inscripción y atributo
+  `notificado` en el evento para que un recordatorio no se envíe dos veces,
+  aunque la Lambda programada se ejecute repetidamente.
+- **Resiliencia**: el evento programado que falle tras 2 reintentos cae a la
+  DLQ (`recordatorio-dlq`, retención 14 días), desde donde puede re-procesarse.
+- **Lambda fuera de VPC**: las funciones solo acceden a servicios públicos
+  (DynamoDB, SNS, SQS), por lo que no se las conecta a una VPC — menos
+  complejidad, sin ENIs ni NAT, y menor latencia (concepto de la clase de
+  arquitecturas orientadas a eventos).
 - Confirmación y recordatorios comparten el topic del evento, así solo los
   inscriptos de ese evento reciben correos.
 - La suscripción SNS por email requiere un clic de confirmación del usuario
