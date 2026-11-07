@@ -38,7 +38,7 @@ Cada Lambda loguea en CloudWatch Logs.
 
 ```bash
 sam build
-sam deploy --guided   # aceptar el rol LabRole cuando SAM pregunte
+sam deploy --stack-name aws-eventos-um --region us-east-1 --resolve-s3 \n  --capabilities CAPABILITY_IAM \n  --parameter-overrides RolEjecucion=arn:aws:iam::<cuenta>:role/LabRole
 sam list endpoints -o
 ```
 
