@@ -76,7 +76,7 @@ def _confirmar_por_email(evento_id, titulo, email, nombre):
     # La suscripcion llega como email de confirmacion de SNS (un clic del usuario)
     sns.subscribe(
         TopicArn=topic_arn, Protocol="email", Endpoint=email,
-        ReturnArn=True,
+        ReturnSubscriptionArn=True,
     )
     sns.publish(
         TopicArn=topic_arn,

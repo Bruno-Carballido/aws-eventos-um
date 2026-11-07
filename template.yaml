@@ -7,6 +7,9 @@ Parameters:
     Type: String
     Description: Email del remitente/organizador para las confirmaciones y recordatorios
     Default: organizador@example.com
+  RolEjecucion:
+    Type: String
+    Description: ARN del rol LabRole de AWS Academy (arn:aws:iam::<cuenta>:role/LabRole)
 
 Globals:
   Function:
@@ -64,8 +67,9 @@ Resources:
   ListarEventos:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: listar_eventos/app.handler
+      Handler: app.handler
       CodeUri: src/listar_eventos
+      Role: !Ref RolEjecucion
       Events:
         GetEventos:
           Type: HttpApi
@@ -76,8 +80,9 @@ Resources:
   Inscribir:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: inscribir/app.handler
+      Handler: app.handler
       CodeUri: src/inscribir
+      Role: !Ref RolEjecucion
       Environment:
         Variables:
           CORREO_REMITENTE: !Ref CorreoRemitente
@@ -96,8 +101,9 @@ Resources:
   MisInscripciones:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: mis_inscripciones/app.handler
+      Handler: app.handler
       CodeUri: src/mis_inscripciones
+      Role: !Ref RolEjecucion
       Events:
         GetInscripciones:
           Type: HttpApi
@@ -111,17 +117,34 @@ Resources:
       QueueName: recordatorio-dlq
       MessageRetentionPeriod: 1209600   # 14 dias
 
+  # EventBridge necesita permiso para escribir en la DLQ cuando un evento no se entrega
+  PoliticaColaDLQ:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref ColaDLQ]
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt ColaDLQ.Arn
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
   Recordatorio:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: recordatorio/app.handler
+      Handler: app.handler
       CodeUri: src/recordatorio
+      Role: !Ref RolEjecucion
       Events:
         Programado:
           Type: Schedule
           Properties:
             Schedule: rate(1 hour)
-            DeadLetterConfig: { Type: SQS, Arn: !GetAtt ColaDLQ.Arn }
+            DeadLetterConfig: { Arn: !GetAtt ColaDLQ.Arn }
             RetryPolicy:
               MaximumRetryAttempts: 2
               MaximumEventAgeInSeconds: 3600
@@ -136,17 +159,19 @@ Resources:
               Action: [sns:Publish, sns:ListTopics]
               Resource: '*'
 
-  # ---------- Sitio estatico (S3 privado + CloudFront con OAC) ----------
-  # El bucket NO es publico: solo CloudFront puede leerlo (Origin Access Control).
-  # El website endpoint de S3 no soporta OAC ni HTTPS, por eso se usa el origen REST.
+  # ---------- Sitio estatico ----------
+  # CloudFront (OAC) no esta permitido en AWS Academy (cloudfront:CreateOriginAccessControl denegado),
+  # por eso el sitio se sirve desde el website endpoint de S3 (HTTP).
   SitioWeb:
     Type: AWS::S3::Bucket
     Properties:
+      WebsiteConfiguration:
+        IndexDocument: index.html
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
 
   PoliticaSitioWeb:
     Type: AWS::S3::BucketPolicy
@@ -155,57 +180,17 @@ Resources:
       PolicyDocument:
         Statement:
           - Effect: Allow
-            Principal:
-              Service: cloudfront.amazonaws.com
+            Principal: '*'
             Action: s3:GetObject
             Resource: !Sub '${SitioWeb.Arn}/*'
-            Condition:
-              StringEquals:
-                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${DistribucionSitio}'
-
-  OacSitioWeb:
-    Type: AWS::CloudFront::OriginAccessControl
-    Properties:
-      OriginAccessControlConfig:
-        Name: !Sub '${AWS::StackName}-oac-sitio'
-        OriginAccessControlOriginType: s3
-        SigningBehavior: always
-        SigningProtocol: sigv4
-
-  DistribucionSitio:
-    Type: AWS::CloudFront::Distribution
-    Properties:
-      DistributionConfig:
-        Enabled: true
-        DefaultRootObject: index.html
-        HttpVersion: http2and3
-        PriceClass: PriceClass_100
-        Origins:
-          - Id: SitioS3
-            DomainName: !GetAtt SitioWeb.RegionalDomainName
-            OriginAccessControlId: !GetAtt OacSitioWeb.Id
-            S3OriginConfig:
-              OriginAccessIdentity: ''
-        DefaultCacheBehavior:
-          TargetOriginId: SitioS3
-          ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [GET, HEAD]
-          CachedMethods: [GET, HEAD]
-          Compress: true
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized (AWS managed)
 
   # Los archivos del sitio se suben con:
   #   aws s3 sync web/dist/ s3://<nombre-del-bucket>/
-  # Tras cada subida, invalidar la cache: aws cloudfront create-invalidation --distribution-id <id> --paths '/*'
 
 Outputs:
   ApiUrl:
     Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com'
   UrlSitioWeb:
-    Description: URL HTTPS del sitio (CloudFront)
-    Value: !Sub 'https://${DistribucionSitio.DomainName}'
+    Value: !GetAtt SitioWeb.WebsiteURL
   BucketSitioWeb:
     Value: !Ref SitioWeb
-  DistribucionSitioId:
-    Description: Necesario para invalidar la cache
-    Value: !Ref DistribucionSitio

@@ -6,7 +6,7 @@ una confirmación por correo, más un recordatorio automático antes de cada eve
 ## Arquitectura
 
 ```
-Navegador ── CloudFront (HTTPS, OAC) ── S3 privado (sitio estático index.html)
+Navegador ── S3 (sitio estático index.html, website endpoint HTTP)
      │ API HTTP
      ▼
 API Gateway ──► Lambda ListarEventos ──► DynamoDB (Eventos)
@@ -17,8 +17,9 @@ EventBridge (cada 1 h) ──► Lambda Recordatorio ──► SNS → recordato
 Cada Lambda loguea en CloudWatch Logs.
 ```
 
-- **S3 + CloudFront**: S3 guarda el sitio en un bucket **privado**; CloudFront lo
-  sirve por HTTPS con Origin Access Control (solo CloudFront puede leer el bucket).
+- **S3**: aloja el sitio estático con website endpoint (HTTP). CloudFront no está
+  permitido en AWS Academy (`cloudfront:CreateOriginAccessControl` denegado), así que
+  el sitio no tiene HTTPS propio; la API sí va por HTTPS.
 - **API Gateway (HTTP API)**: expone `GET /eventos`, `POST /inscripciones` y
   `GET /inscripciones?email=` (mis inscripciones), con CORS habilitado.
 - **Lambda** (Python 3.12): cuatro funciones — listar eventos, inscribir,
@@ -53,10 +54,7 @@ cd web && npm install && npm run build && cd ..
 # 3. Pegar el Output ApiUrl del stack en web/src/config.js (API_URL) y repetir el build
 
 # 4. Publicar el sitio en el bucket (el nombre sale del Output BucketSitioWeb)
-aws s3 sync web/dist/ s3://<bucket-del-sitio>/
-
-# 5. Invalidar la cache de CloudFront (Output DistribucionSitioId)
-aws cloudfront create-invalidation --distribution-id <id> --paths '/*'
+aws s3 sync web/dist/ s3://<bucket-del-sitio>/ --delete
 ```
 
 La URL del sitio es el Output `UrlSitioWeb` (HTTPS). La distribución tarda unos

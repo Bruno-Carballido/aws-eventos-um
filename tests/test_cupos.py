@@ -11,6 +11,23 @@ os.environ.setdefault("TABLA_INSCRIPCIONES", "Inscripciones")
 
 
 class TestListarCupos(unittest.TestCase):
+    def test_listar_serializa_decimal_de_dynamodb(self):
+        from decimal import Decimal
+        app = cargar_app("listar_eventos")
+        tabla = MagicMock()
+        tabla.scan.return_value = {"Items": [
+            {"eventoId": "e-001", "fecha": "2099-01-01T18:00:00Z",
+             "cupo": Decimal("30"), "inscritos": Decimal("12")},
+        ]}
+        app.dynamodb = MagicMock()
+        app.dynamodb.Table.return_value = tabla
+
+        resp = app.handler({}, None)
+
+        cuerpo = json.loads(resp["body"])
+        self.assertEqual(cuerpo[0]["cupo"], 30)
+        self.assertEqual(cuerpo[0]["inscritos"], 12)
+
     def test_listar_incluye_cupo_e_inscritos(self):
         app = cargar_app("listar_eventos")
         tabla = MagicMock()
@@ -63,6 +80,10 @@ class TestInscribirCupos(unittest.TestCase):
         self.assertEqual(kwargs["ExpressionAttributeValues"][":cupo"], 30)
         item = tabla_inscr.put_item.call_args.kwargs["Item"]
         self.assertEqual(item["tituloEvento"], "Charla")
+        # boto3 solo acepta ReturnSubscriptionArn (ReturnArn lanza ParamValidationError)
+        sub_kwargs = app.sns.subscribe.call_args.kwargs
+        self.assertIn("ReturnSubscriptionArn", sub_kwargs)
+        self.assertNotIn("ReturnArn", sub_kwargs)
 
     def test_inscribir_sin_cupos_devuelve_409(self):
         evento = {"eventoId": "e-001", "titulo": "Charla",

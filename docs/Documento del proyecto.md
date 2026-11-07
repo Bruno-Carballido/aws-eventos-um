@@ -118,7 +118,7 @@ gestionada de AWS salvo el acceso de los usuarios:
 
 | # | De → A | Canal | Control de acceso |
 |---|---|---|---|
-| 1 | Navegador → CloudFront → S3 (sitio) | HTTPS en CloudFront; origen S3 privado | Origin Access Control: el bucket solo acepta lecturas de la distribución (`s3:GetObject` condicionado a `AWS:SourceArn`) |
+| 1 | Navegador → S3 (sitio) | Website endpoint de S3 (HTTP) | Política de bucket de solo lectura pública (`s3:GetObject`) |
 | 2 | Navegador → API Gateway | HTTPS (edge global de AWS) | API abierta (demo) + CORS |
 | 3 | API Gateway → Lambda | Invocación privada dentro de la red de AWS | Resource-based policy de la función |
 | 4 | Lambda → DynamoDB / SNS / SQS | Endpoints de AWS por HTTPS | IAM mínimo privilegio por función |
@@ -149,10 +149,11 @@ hora; el tráfico no sale a Internet) o **Interface Endpoints** para SNS/SQS
 Internet. El trade-off es mayor complejidad operativa, ENIs y latencia
 adicional, sin beneficio para este alcance.
 
-**Sitio estático con HTTPS**: el website endpoint de S3 solo sirve HTTP y no
-admite OAC, por lo que el bucket es privado y el sitio se publica a través de
-**CloudFront** (origen REST de S3 + OAC + redirección a HTTPS). Así el sitio
-y la API quedan ambos sobre HTTPS, y el bucket no expone objetos a Internet.
+**Sitio estático sin HTTPS**: el sitio se sirve desde el website endpoint de S3
+(HTTP). La intención inicial era CloudFront con Origin Access Control (bucket
+privado y HTTPS), pero AWS Academy deniega `cloudfront:CreateOriginAccessControl`
+al rol del lab, así que se descartó. La API sí usa HTTPS. En producción, CloudFront
+delante del bucket resolvería el HTTPS y permitiría un bucket privado.
 
 ## 5. Seguridad
 
@@ -165,8 +166,8 @@ y la API quedan ambos sobre HTTPS, y el bucket no expone objetos a Internet.
   en variables de entorno de Lambda; las credenciales las provee el rol de
   ejecución vía IAM, nunca llaves embebidas.
 - **HTTPS en la API**: API Gateway expone el endpoint solo por HTTPS.
-- **Bucket del sitio**: privado (bloqueo total de acceso público); solo la
-  distribución de CloudFront puede leer objetos, por OAC.
+- **Bucket del sitio**: público de solo lectura (`s3:GetObject`), por ser un
+  sitio estático sin HTTPS; sin escritura pública.
 - **No exponer datos de terceros**: la API no devuelve listados de emails de
   inscriptos; solo confirma la propia inscripción. Limitación aceptada y
   documentada: `GET /inscripciones?email=` es público (sin autenticación),
