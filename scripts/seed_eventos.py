@@ -14,6 +14,7 @@ EVENTOS = [
         "titulo": "Charla de AWS en la UM",
         "descripcion": "Introduccion a serverless con SAM y Lambda.",
         "lugar": "Aula 101, Universidad de Montevideo",
+        "cupo": 30,
         "fecha": (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%dT18:00:00Z"),
     },
     {
@@ -21,6 +22,7 @@ EVENTOS = [
         "titulo": "Taller de DynamoDB",
         "descripcion": "Modelado de datos y consultas con GSIs.",
         "lugar": "Laboratorio B, UM",
+        "cupo": 25,
         "fecha": (datetime.utcnow() + timedelta(days=3)).strftime("%Y-%m-%dT19:00:00Z"),
     },
     {
@@ -28,6 +30,7 @@ EVENTOS = [
         "titulo": "Meetup de Cloud Practitioner",
         "descripcion": "Preparacion para la certificacion.",
         "lugar": "Montevideo",
+        "cupo": 10,
         "fecha": (datetime.utcnow() + timedelta(days=10)).strftime("%Y-%m-%dT20:00:00Z"),
     },
 ]

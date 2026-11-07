@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 import boto3
+from botocore.exceptions import ClientError
 
 dynamodb = boto3.resource("dynamodb")
 sns = boto3.client("sns")
@@ -37,6 +38,21 @@ def handler(event, context):
     if existentes.get("Items"):
         return _resp(409, {"error": "ya esta inscripto en este evento"})
 
+    # Cupo: incremento condicional atomico; si se lleno, responde 409 sin insertar.
+    # Evento sin atributo "cupo" = sin limite.
+    if "cupo" in evento:
+        try:
+            tabla_eventos.update_item(
+                Key={"eventoId": evento_id},
+                UpdateExpression="ADD inscritos :uno",
+                ConditionExpression="attribute_not_exists(inscritos) OR inscritos < :cupo",
+                ExpressionAttributeValues={":uno": 1, ":cupo": int(evento["cupo"])},
+            )
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                return _resp(409, {"error": "sin cupos disponibles"})
+            raise
+
     inscripcion_id = str(uuid.uuid4())
     tabla_inscr.put_item(
         Item={
@@ -44,6 +60,7 @@ def handler(event, context):
             "eventoId": evento_id,
             "email": email,
             "nombre": nombre,
+            "tituloEvento": evento["titulo"],
             "creadoEn": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
     )
