@@ -35,8 +35,9 @@ lo contrario en la sección 7.
 6. Si una ejecución programada falla dos veces, EventBridge envía el evento a la DLQ.
 7. Todas las funciones escriben en CloudWatch Logs.
 
-El diagrama de componentes y de tráfico está en `docs/diagrama-arquitectura.png`.
-Los diagramas de red y de seguridad se piden por separado (sección 7).
+Los tres diagramas están en `docs/`. El de componentes y tráfico es `diagrama-arquitectura.png`.
+El de red, con el alcance público y privado, es `diagrama-red.png`. El de seguridad,
+con zonas de confianza, controles y debilidades, es `diagrama-seguridad.png`.
 
 ### 1.3 Decisiones de diseño
 
@@ -274,13 +275,16 @@ Limitaciones del sistema:
 
 Pendientes antes de la entrega:
 
-- Diagrama de red y diagrama de seguridad por separado, además del de componentes y
-  tráfico.
 - Calcular el TCO de la alternativa EC2 con la calculadora de precios de AWS.
 - Citar la documentación de Lambda y de API Gateway sobre multi-AZ.
-- Decidir si se corrigen los defectos de la sección 4.2 antes de la entrega o si se
-  presentan como limitaciones.
 - Activar point-in-time recovery en el template.
+
+Decisiones tomadas:
+
+- Los defectos de la sección 4.2 se presentan como limitaciones. No se corrigen antes
+  de la entrega.
+- El proyecto no usa ECS ni EC2. La consigna no lo exige y el diseño serverless
+  cubre el alcance.
 
 ## 8. Fuentes
 
