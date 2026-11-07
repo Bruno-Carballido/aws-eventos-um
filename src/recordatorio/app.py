@@ -9,6 +9,29 @@ sns = boto3.client("sns")
 
 VENTANA_HORAS = 24  # recordatorio para eventos que ocurren en las proximas 24 h
 
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+         "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+UTC_MONTEVIDEO = timedelta(hours=-3)  # Uruguay no usa horario de verano desde 2015
+
+
+def fecha_legible(fecha_iso):
+    """'2026-11-09T18:00:00Z' -> 'lunes 9 de noviembre de 2026, 15:00 h' (hora de Montevideo)."""
+    dt = datetime.strptime(fecha_iso, "%Y-%m-%dT%H:%M:%SZ") + UTC_MONTEVIDEO
+    return f"{DIAS[dt.weekday()]} {dt.day} de {MESES[dt.month - 1]} de {dt.year}, {dt:%H:%M} h"
+
+
+def construir_recordatorio(titulo, fecha, lugar):
+    texto = (
+        "Hola,\n\n"
+        f"Te recordamos que mañana tenés «{titulo}».\n\n"
+        f"Fecha: {fecha_legible(fecha)}\n"
+        f"Lugar: {lugar or 'a confirmar'}\n\n"
+        "¡Te esperamos!\n"
+        "Equipo de Eventos UM"
+    )
+    return texto, f"Recordatorio: {titulo}"
+
 
 def handler(event, context):
     tabla = dynamodb.Table(os.environ["TABLA_EVENTOS"])
@@ -29,11 +52,8 @@ def handler(event, context):
         topic = _topic_del_evento(e["eventoId"])
         if not topic:
             continue
-        sns.publish(
-            TopicArn=topic,
-            Subject="Recordatorio: evento manana",
-            Message=f"No olvides '{e['titulo']}' — {e['fecha']} en {e.get('lugar', 'lugar a confirmar')}.",
-        )
+        texto, asunto = construir_recordatorio(e["titulo"], e["fecha"], e.get("lugar", ""))
+        sns.publish(TopicArn=topic, Subject=asunto, Message=texto)
         tabla.update_item(
             Key={"eventoId": e["eventoId"]},
             UpdateExpression="SET notificado = :f",

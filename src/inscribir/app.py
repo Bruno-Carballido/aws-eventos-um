@@ -1,13 +1,24 @@
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import boto3
 from botocore.exceptions import ClientError
 
 dynamodb = boto3.resource("dynamodb")
 sns = boto3.client("sns")
+
+MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+         "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+UTC_MONTEVIDEO = timedelta(hours=-3)  # Uruguay no usa horario de verano desde 2015
+
+
+def fecha_legible(fecha_iso):
+    """'2026-11-09T18:00:00Z' -> 'lunes 9 de noviembre de 2026, 15:00 h' (hora de Montevideo)."""
+    dt = datetime.strptime(fecha_iso, "%Y-%m-%dT%H:%M:%SZ") + UTC_MONTEVIDEO
+    return f"{DIAS[dt.weekday()]} {dt.day} de {MESES[dt.month - 1]} de {dt.year}, {dt:%H:%M} h"
 
 
 def handler(event, context):
@@ -65,12 +76,14 @@ def handler(event, context):
         }
     )
 
-    _confirmar_por_email(evento_id, evento["titulo"], email, nombre)
+    _confirmar_por_email(
+        evento_id, evento["titulo"], email, nombre, evento["fecha"], evento.get("lugar", "")
+    )
 
     return _resp(201, {"inscripcionId": inscripcion_id, "estado": "confirmacion_enviada"})
 
 
-def _confirmar_por_email(evento_id, titulo, email, nombre):
+def _confirmar_por_email(evento_id, titulo, email, nombre, fecha, lugar):
     """Un topic por evento: solo los inscriptos de ESTE evento reciben sus correos."""
     topic_arn = _topic_del_evento(evento_id)
     # La suscripcion llega como email de confirmacion de SNS (un clic del usuario)
@@ -80,8 +93,16 @@ def _confirmar_por_email(evento_id, titulo, email, nombre):
     )
     sns.publish(
         TopicArn=topic_arn,
-        Subject="Inscripcion confirmada",
-        Message=f"Hola {nombre}: quedaste inscripto a '{titulo}'. Recibiras un recordatorio antes del evento.",
+        Subject=f"Inscripción confirmada: {titulo}",
+        Message=(
+            f"Hola {nombre},\n\n"
+            f"Tu inscripción a «{titulo}» está confirmada.\n\n"
+            f"Fecha: {fecha_legible(fecha)}\n"
+            f"Lugar: {lugar or 'a confirmar'}\n\n"
+            "Te enviaremos un recordatorio el día anterior al evento.\n\n"
+            "Nos vemos ahí.\n"
+            "Equipo de Eventos UM"
+        ),
     )
 
 
