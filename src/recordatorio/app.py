@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import boto3
 
@@ -12,7 +12,7 @@ VENTANA_HORAS = 24  # recordatorio para eventos que ocurren en las proximas 24 h
 
 def handler(event, context):
     tabla = dynamodb.Table(os.environ["TABLA_EVENTOS"])
-    ahora = datetime.utcnow()
+    ahora = datetime.now(timezone.utc)
     limite = (ahora + timedelta(hours=VENTANA_HORAS)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Scan acotado por diseño; con catalogo grande se reemplaza por un GSI de fecha

@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
@@ -25,7 +25,7 @@ def handler(event, context):
     evento = tabla_eventos.get_item(Key={"eventoId": evento_id}).get("Item")
     if not evento:
         return _resp(404, {"error": "evento inexistente"})
-    if evento["fecha"] < datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"):
+    if evento["fecha"] < datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"):
         return _resp(400, {"error": "el evento ya ocurrio"})
 
     # Evita inscripciones duplicadas del mismo email en el mismo evento
@@ -61,7 +61,7 @@ def handler(event, context):
             "email": email,
             "nombre": nombre,
             "tituloEvento": evento["titulo"],
-            "creadoEn": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "creadoEn": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
     )
 

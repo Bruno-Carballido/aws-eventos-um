@@ -4,7 +4,7 @@ Uso: python scripts/seed_eventos.py [--tabla Eventos]
 import argparse
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import boto3
 
@@ -15,7 +15,7 @@ EVENTOS = [
         "descripcion": "Introduccion a serverless con SAM y Lambda.",
         "lugar": "Aula 101, Universidad de Montevideo",
         "cupo": 30,
-        "fecha": (datetime.utcnow() + timedelta(days=1)).strftime("%Y-%m-%dT18:00:00Z"),
+        "fecha": (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT18:00:00Z"),
     },
     {
         "eventoId": "e-002",
@@ -23,7 +23,7 @@ EVENTOS = [
         "descripcion": "Modelado de datos y consultas con GSIs.",
         "lugar": "Laboratorio B, UM",
         "cupo": 25,
-        "fecha": (datetime.utcnow() + timedelta(days=3)).strftime("%Y-%m-%dT19:00:00Z"),
+        "fecha": (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%dT19:00:00Z"),
     },
     {
         "eventoId": "e-003",
@@ -31,7 +31,7 @@ EVENTOS = [
         "descripcion": "Preparacion para la certificacion.",
         "lugar": "Montevideo",
         "cupo": 10,
-        "fecha": (datetime.utcnow() + timedelta(days=10)).strftime("%Y-%m-%dT20:00:00Z"),
+        "fecha": (datetime.now(timezone.utc) + timedelta(days=10)).strftime("%Y-%m-%dT20:00:00Z"),
     },
 ]
 
