@@ -93,6 +93,18 @@ Resources:
               Action: [sns:CreateTopic, sns:Subscribe, sns:Publish, sns:ListTopics]
               Resource: '*'
 
+  MisInscripciones:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: mis_inscripciones/app.handler
+      CodeUri: src/mis_inscripciones
+      Events:
+        GetInscripciones:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /inscripciones, Method: GET }
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref TablaInscripciones }
+
   ColaDLQ:
     Type: AWS::SQS::Queue
     Properties:
