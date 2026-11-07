@@ -118,7 +118,7 @@ gestionada de AWS salvo el acceso de los usuarios:
 
 | # | De → A | Canal | Control de acceso |
 |---|---|---|---|
-| 1 | Navegador → S3 (sitio) | Website endpoint de S3 | Resource policy del bucket (`s3:GetObject` acotado) |
+| 1 | Navegador → CloudFront → S3 (sitio) | HTTPS en CloudFront; origen S3 privado | Origin Access Control: el bucket solo acepta lecturas de la distribución (`s3:GetObject` condicionado a `AWS:SourceArn`) |
 | 2 | Navegador → API Gateway | HTTPS (edge global de AWS) | API abierta (demo) + CORS |
 | 3 | API Gateway → Lambda | Invocación privada dentro de la red de AWS | Resource-based policy de la función |
 | 4 | Lambda → DynamoDB / SNS / SQS | Endpoints de AWS por HTTPS | IAM mínimo privilegio por función |
@@ -149,10 +149,10 @@ hora; el tráfico no sale a Internet) o **Interface Endpoints** para SNS/SQS
 Internet. El trade-off es mayor complejidad operativa, ENIs y latencia
 adicional, sin beneficio para este alcance.
 
-**Nota sobre el sitio estático**: el website endpoint de S3 no soporta HTTPS
-propio (solo HTTP); el HTTPS del sistema está en la API Gateway. Para servir
-el sitio con HTTPS se interpone CloudFront delante del bucket, que es la
-configuración de producción recomendada.
+**Sitio estático con HTTPS**: el website endpoint de S3 solo sirve HTTP y no
+admite OAC, por lo que el bucket es privado y el sitio se publica a través de
+**CloudFront** (origen REST de S3 + OAC + redirección a HTTPS). Así el sitio
+y la API quedan ambos sobre HTTPS, y el bucket no expone objetos a Internet.
 
 ## 5. Seguridad
 
@@ -165,8 +165,8 @@ configuración de producción recomendada.
   en variables de entorno de Lambda; las credenciales las provee el rol de
   ejecución vía IAM, nunca llaves embebidas.
 - **HTTPS en la API**: API Gateway expone el endpoint solo por HTTPS.
-- **Bucket del sitio**: política acotada a `s3:GetObject` sobre los objetos del
-  sitio; el resto de las acciones de S3 quedan bloqueadas por defecto.
+- **Bucket del sitio**: privado (bloqueo total de acceso público); solo la
+  distribución de CloudFront puede leer objetos, por OAC.
 - **No exponer datos de terceros**: la API no devuelve listados de emails de
   inscriptos; solo confirma la propia inscripción. Limitación aceptada y
   documentada: `GET /inscripciones?email=` es público (sin autenticación),

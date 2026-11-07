@@ -6,7 +6,7 @@ una confirmación por correo, más un recordatorio automático antes de cada eve
 ## Arquitectura
 
 ```
-Navegador ── S3 (sitio estático index.html)
+Navegador ── CloudFront (HTTPS, OAC) ── S3 privado (sitio estático index.html)
      │ API HTTP
      ▼
 API Gateway ──► Lambda ListarEventos ──► DynamoDB (Eventos)
@@ -17,7 +17,8 @@ EventBridge (cada 1 h) ──► Lambda Recordatorio ──► SNS → recordato
 Cada Lambda loguea en CloudWatch Logs.
 ```
 
-- **S3**: aloja la página estática (lista de eventos + formulario de inscripción).
+- **S3 + CloudFront**: S3 guarda el sitio en un bucket **privado**; CloudFront lo
+  sirve por HTTPS con Origin Access Control (solo CloudFront puede leer el bucket).
 - **API Gateway (HTTP API)**: expone `GET /eventos`, `POST /inscripciones` y
   `GET /inscripciones?email=` (mis inscripciones), con CORS habilitado.
 - **Lambda** (Python 3.12): cuatro funciones — listar eventos, inscribir,
@@ -51,9 +52,15 @@ cd web && npm install && npm run build && cd ..
 
 # 3. Pegar el Output ApiUrl del stack en web/src/config.js (API_URL) y repetir el build
 
-# 4. Publicar el sitio
-aws s3 cp web/dist/ s3://<bucket-del-sitio>/ --recursive
+# 4. Publicar el sitio en el bucket (el nombre sale del Output BucketSitioWeb)
+aws s3 sync web/dist/ s3://<bucket-del-sitio>/
+
+# 5. Invalidar la cache de CloudFront (Output DistribucionSitioId)
+aws cloudfront create-invalidation --distribution-id <id> --paths '/*'
 ```
+
+La URL del sitio es el Output `UrlSitioWeb` (HTTPS). La distribución tarda unos
+minutos en propagarse tras el primer deploy.
 
 > En Academy toda Lambda reutiliza el `LabRole` preexistente; no se crean roles
 > propios (restricción de IAM del laboratorio). El template ya queda así.

@@ -136,17 +136,17 @@ Resources:
               Action: [sns:Publish, sns:ListTopics]
               Resource: '*'
 
-  # ---------- Sitio estatico ----------
+  # ---------- Sitio estatico (S3 privado + CloudFront con OAC) ----------
+  # El bucket NO es publico: solo CloudFront puede leerlo (Origin Access Control).
+  # El website endpoint de S3 no soporta OAC ni HTTPS, por eso se usa el origen REST.
   SitioWeb:
     Type: AWS::S3::Bucket
     Properties:
-      WebsiteConfiguration:
-        IndexDocument: index.html
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
 
   PoliticaSitioWeb:
     Type: AWS::S3::BucketPolicy
@@ -155,15 +155,57 @@ Resources:
       PolicyDocument:
         Statement:
           - Effect: Allow
-            Principal: '*'
+            Principal:
+              Service: cloudfront.amazonaws.com
             Action: s3:GetObject
             Resource: !Sub '${SitioWeb.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${DistribucionSitio}'
 
-  # Los archivos del sitio (index.html) se suben con:
-  #   aws s3 cp web/ s3://<nombre-del-bucket> --recursive
+  OacSitioWeb:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-oac-sitio'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  DistribucionSitio:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: SitioS3
+            DomainName: !GetAtt SitioWeb.RegionalDomainName
+            OriginAccessControlId: !GetAtt OacSitioWeb.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: SitioS3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized (AWS managed)
+
+  # Los archivos del sitio se suben con:
+  #   aws s3 sync web/dist/ s3://<nombre-del-bucket>/
+  # Tras cada subida, invalidar la cache: aws cloudfront create-invalidation --distribution-id <id> --paths '/*'
 
 Outputs:
   ApiUrl:
     Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com'
   UrlSitioWeb:
-    Value: !GetAtt SitioWeb.WebsiteURL
+    Description: URL HTTPS del sitio (CloudFront)
+    Value: !Sub 'https://${DistribucionSitio.DomainName}'
+  BucketSitioWeb:
+    Value: !Ref SitioWeb
+  DistribucionSitioId:
+    Description: Necesario para invalidar la cache
+    Value: !Ref DistribucionSitio
