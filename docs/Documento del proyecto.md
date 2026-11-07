@@ -11,12 +11,15 @@ programada y monitoreo.
 
 ## 2. Alcance
 
-1. Sitio web estático que lista los eventos disponibles y permite inscribirse.
-2. API pública para consultar eventos y registrar inscripciones.
+1. Sitio web estático que lista los eventos disponibles (con cupos) y permite
+   inscribirse.
+2. API pública para consultar eventos, registrar inscripciones y consultar las
+   inscripciones de un email (mis inscripciones).
 3. Confirmación por correo electrónico ante cada inscripción.
 4. Recordatorio por correo antes de cada evento, enviado automáticamente.
-5. Persistencia de eventos e inscripciones en una base de datos NoSQL.
-6. Monitoreo de registros y errores de todos los componentes.
+5. Control de cupos por evento: al llenarse, la inscripción se rechaza.
+6. Persistencia de eventos e inscripciones en una base de datos NoSQL.
+7. Monitoreo de registros y errores de todos los componentes.
 
 Fuera de alcance para esta entrega: autenticación de usuarios, pagos,
 cancelación de inscripciones y multi-tenant.
@@ -33,22 +36,28 @@ El flujo de datos es el siguiente:
 3. **Inscripción.** El usuario envía el formulario; la página invoca
    `POST /inscripciones` y la función Lambda `Inscribir` valida que el evento
    exista y no haya ocurrido, evita duplicados (mismo email en el mismo
-   evento) y registra la inscripción en la tabla `Inscripciones`.
-4. **Confirmación.** Como parte del mismo proceso, la Lambda crea (o reutiliza)
+   evento), controla el cupo con un incremento condicional atómico sobre el
+   contador `inscritos` (responde 409 si el evento se llenó) y registra la
+   inscripción en la tabla `Inscripciones`.
+4. **Mis inscripciones.** La página permite buscar las inscripciones de un
+   email mediante `GET /inscripciones?email=`; la función Lambda
+   `MisInscripciones` consulta el GSI `porEmail` de la tabla `Inscripciones` y
+   devuelve el historial del usuario.
+5. **Confirmación.** Como parte del mismo proceso, la Lambda crea (o reutiliza)
    un topic de Amazon SNS por evento, suscribe el email del inscripto y publica
    el mensaje de confirmación. Solo los inscriptos de ese evento reciben sus
    correos. La inscripción se modela así como un *domain event*
    (`InscripcionCreada`) de procesamiento asíncrono, tal como se vio en la
    unidad de arquitecturas orientadas a eventos.
-5. **Recordatorio.** Amazon EventBridge Scheduler dispara la función Lambda
+6. **Recordatorio.** Amazon EventBridge Scheduler dispara la función Lambda
    `Recordatorio` cada hora. Esta identifica los eventos que ocurren en las
    próximas 24 horas y publica un recordatorio en el topic SNS de cada evento.
    Un atributo `notificado` en el ítem del evento garantiza que cada
    recordatorio se envíe una sola vez (idempotencia).
-6. **Resiliencia.** Si la ejecución programada falla tras 2 reintentos, el
+7. **Resiliencia.** Si la ejecución programada falla tras 2 reintentos, el
    evento cae a una cola muerta (DLQ) de Amazon SQS con retención de 14 días,
    desde donde puede investigarse y re-procesarse sin pérdida.
-7. **Monitoreo.** Amazon CloudWatch registra los logs y errores de las tres
+8. **Monitoreo.** Amazon CloudWatch registra los logs y errores de las tres
    funciones Lambda, y expone las métricas de la API.
 
 ### Diagrama de arquitectura
@@ -85,8 +94,8 @@ El flujo de datos es el siguiente:
 | Servicio | Rol en el proyecto |
 |---|---|
 | S3 | Aloja el sitio web estático (HTML/JS) con política de lectura pública. |
-| API Gateway (HTTP API) | Expone `GET /eventos` y `POST /inscripciones` con CORS habilitado. |
-| Lambda | Tres funciones (Python): listar eventos, inscribir, recordatorio. |
+| API Gateway (HTTP API) | Expone `GET /eventos`, `POST /inscripciones` y `GET /inscripciones?email=` con CORS habilitado. |
+| Lambda | Cuatro funciones (Python): listar eventos, inscribir, mis inscripciones, recordatorio. |
 | DynamoDB | Tablas `Eventos` e `Inscripciones` (GSI por evento y por email), modo pago por petición. |
 | SNS | Confirmación y recordatorios por email; un topic por evento. |
 | EventBridge Scheduler | Dispara la función de recordatorio cada hora. |
@@ -116,7 +125,10 @@ laboratorio tal cual, sin equivalencias necesarias.
 - **Bucket del sitio**: política acotada a `s3:GetObject` sobre los objetos del
   sitio; el resto de las acciones de S3 quedan bloqueadas por defecto.
 - **No exponer datos de terceros**: la API no devuelve listados de emails de
-  inscriptos; solo confirma la propia inscripción.
+  inscriptos; solo confirma la propia inscripción. Limitación aceptada y
+  documentada: `GET /inscripciones?email=` es público (sin autenticación),
+  por lo que quien conoce un email puede consultar sus inscripciones; fuera
+  del alcance de la demo, se resolvería con autenticación (p. ej. Cognito).
 - **DLQ y logs acotados**: los logs de CloudWatch no registran datos sensibles
   (solo IDs y estados); la DLQ permite auditar fallos sin dispersar eventos.
 
@@ -139,13 +151,17 @@ laboratorio tal cual, sin equivalencias necesarias.
 
 ## 7. Algoritmos
 
-> El procesamiento de datos no es el foco de la materia; se destacan dos
+> El procesamiento de datos no es el foco de la materia; se destacan tres
 > rutinas cortas y demoables.
 
 1. **Deduplicación de inscripciones.** Antes de insertar, se consulta el GSI
    `porEvento` filtrando por email: si ya existe, se responde 409. Complejidad
    O(1) sobre el índice; evita que un mismo usuario ocupe dos cupos.
-2. **Anti-repetición de recordatorios.** El recordatorio marca cada evento con
+2. **Cupo atómico.** El contador `inscritos` se incrementa con una condición
+   (`attribute_not_exists(inscritos) OR inscritos < cupo`) en una sola
+   operación de DynamoDB: si la condición falla, se responde 409 sin insertar.
+   Es la barrera contra sobreventa ante inscripciones simultáneas.
+3. **Anti-repetición de recordatorios.** El recordatorio marca cada evento con
    `notificado = fecha` del evento; la siguiente ejecución horaria salta los
    eventos ya marcados. Es la forma idempotente de operar un trigger periódico.
 
@@ -185,12 +201,17 @@ los créditos del laboratorio.
 
 1. Desplegar el stack (`sam build && sam deploy --guided`).
 2. Cargar eventos de prueba (`python scripts/seed_eventos.py`).
-3. Publicar el sitio en el bucket S3 y apuntar `web/index.html` a la URL de la API.
-4. Inscribirse desde la página: verificar la inscripción en DynamoDB y el email
-   de confirmación de SNS (con su clic de confirmación de suscripción).
-5. Forzar la ejecución del recordatorio (invocar la Lambda con `sam local invoke`
+3. Construir el sitio (`cd web && npm run build`), apuntar `web/src/config.js`
+   a la URL de la API y publicar `web/dist/` en el bucket S3.
+4. Inscribirse desde la página: verificar la inscripción en DynamoDB, el email
+   de confirmación de SNS (con su clic de confirmación de suscripción) y el
+   contador de cupos del evento incrementándose en la lista.
+5. Llenar un evento (o bajar su cupo) y verificar que la página muestra
+   "Sin lugares disponibles" y la API responde 409.
+6. Buscar las inscripciones del email en la sección "Mis inscripciones".
+7. Forzar la ejecución del recordatorio (invocar la Lambda con `sam local invoke`
    o esperar la ejecución horaria) y verificar el email del recordatorio.
-6. Revisar los logs en CloudWatch y el estado de la DLQ.
+8. Revisar los logs en CloudWatch y el estado de la DLQ.
 
 ## 11. Repositorio
 

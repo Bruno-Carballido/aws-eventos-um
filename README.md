@@ -18,9 +18,13 @@ Cada Lambda loguea en CloudWatch Logs.
 ```
 
 - **S3**: aloja la página estática (lista de eventos + formulario de inscripción).
-- **API Gateway (HTTP API)**: expone `GET /eventos` y `POST /inscripciones` con CORS.
-- **Lambda** (Python 3.12): tres funciones — listar, inscribir, recordatorio.
-- **DynamoDB**: tabla `Eventos` y tabla `Inscripciones` (GSI `porEvento` y `porEmail`).
+- **API Gateway (HTTP API)**: expone `GET /eventos`, `POST /inscripciones` y
+  `GET /inscripciones?email=` (mis inscripciones), con CORS habilitado.
+- **Lambda** (Python 3.12): cuatro funciones — listar eventos, inscribir,
+  mis inscripciones y recordatorio.
+- **DynamoDB**: tabla `Eventos` e `Inscripciones` (GSI `porEvento` y `porEmail`),
+  modo pago por petición. Los eventos llevan `cupo` e `inscritos` (contador
+  atómico que bloquea la inscripción cuando se llena).
 - **SNS**: un topic por evento; los inscriptos se suscriben con su email.
 - **EventBridge Scheduler**: dispara el recordatorio cada 1 hora; solo notifica
   eventos dentro de las próximas 24 h y marca `notificado` para no repetir.
@@ -42,10 +46,13 @@ Luego:
 # 1. Cargar eventos de prueba
 python scripts/seed_eventos.py --tabla Eventos
 
-# 2. Publicar el sitio
-aws s3 cp web/ s3://<bucket-del-sitio>/ --recursive
+# 2. Construir el sitio (Vite + React)
+cd web && npm install && npm run build && cd ..
 
-# 3. Pegar el Output ApiUrl del stack en web/index.html (const API) y re-subir
+# 3. Pegar el Output ApiUrl del stack en web/src/config.js (API_URL) y repetir el build
+
+# 4. Publicar el sitio
+aws s3 cp web/dist/ s3://<bucket-del-sitio>/ --recursive
 ```
 
 > En Academy toda Lambda reutiliza el `LabRole` preexistente; no se crean roles
@@ -54,11 +61,13 @@ aws s3 cp web/ s3://<bucket-del-sitio>/ --recursive
 ## Estructura
 
 ```
-template.yaml          # stack SAM
-src/listar_eventos/    # GET /eventos
-src/inscribir/         # POST /inscripciones (valida, deduplica, confirma por email)
-src/recordatorio/      # programada por EventBridge, envía recordatorios
-web/index.html         # página estática
+template.yaml            # stack SAM
+src/listar_eventos/      # GET /eventos
+src/inscribir/           # POST /inscripciones (valida, deduplica, controla cupo, confirma por email)
+src/mis_inscripciones/   # GET /inscripciones?email= (mis inscripciones)
+src/recordatorio/        # programada por EventBridge, envía recordatorios
+web/                     # sitio Vite + React (npm run build genera web/dist/)
+tests/                   # tests unitarios (python -m unittest discover tests)
 scripts/seed_eventos.py
 ```
 
@@ -70,6 +79,9 @@ scripts/seed_eventos.py
 - **Idempotencia**: dedup por email+evento en la inscripción y atributo
   `notificado` en el evento para que un recordatorio no se envíe dos veces,
   aunque la Lambda programada se ejecute repetidamente.
+- **Cupos**: el contador `inscritos` se incrementa con una condición atómica
+  (`inscritos < cupo`), de modo que dos inscripciones simultáneas no pueden
+  vender el último lugar dos veces; al llenarse, la API responde 409.
 - **Resiliencia**: el evento programado que falle tras 2 reintentos cae a la
   DLQ (`recordatorio-dlq`, retención 14 días), desde donde puede re-procesarse.
 - **Lambda fuera de VPC**: las funciones solo acceden a servicios públicos
@@ -81,3 +93,6 @@ scripts/seed_eventos.py
 - La suscripción SNS por email requiere un clic de confirmación del usuario
   (correo estándar de SNS).
 - Anti-repetición de recordatorios: atributo `notificado` en el ítem del evento.
+- Limitación conocida: `GET /inscripciones?email=` es público (sin
+  autenticación) — cualquiera puede consultar inscripciones conociendo el
+  email. Aceptable para la demo; se documenta en el informe de seguridad.
