@@ -111,6 +111,49 @@ académico de un rol de ejecución por función con políticas de mínimo
 privilegio. El resto de los servicios del diseño están disponibles en el
 laboratorio tal cual, sin equivalencias necesarias.
 
+### Red e interconexión de servicios
+
+El sistema se compone de 6 canales de interconexión, todos sobre la red
+gestionada de AWS salvo el acceso de los usuarios:
+
+| # | De → A | Canal | Control de acceso |
+|---|---|---|---|
+| 1 | Navegador → S3 (sitio) | Website endpoint de S3 | Resource policy del bucket (`s3:GetObject` acotado) |
+| 2 | Navegador → API Gateway | HTTPS (edge global de AWS) | API abierta (demo) + CORS |
+| 3 | API Gateway → Lambda | Invocación privada dentro de la red de AWS | Resource-based policy de la función |
+| 4 | Lambda → DynamoDB / SNS / SQS | Endpoints de AWS por HTTPS | IAM mínimo privilegio por función |
+| 5 | EventBridge Scheduler → Lambda | Invocación privada; DLQ a SQS | Resource-based policy + IAM |
+| 6 | SNS → correo de usuarios | Salida SMTP hacia Internet | Suscripciones confirmadas por el usuario |
+
+**Las funciones corren fuera de VPC, y es una decisión de arquitectura.** Según
+el criterio visto en clase, una Lambda solo se conecta a una VPC cuando debe
+acceder a recursos privados (RDS, ElastiCache, ALB internos) o forzar salida
+privada mediante VPC endpoints. Todos los servicios de este proyecto
+(DynamoDB, SNS, SQS, EventBridge) son públicos por diseño, así que las
+funciones se ejecutan en la VPC administrada de AWS: sin ENIs, sin subnets ni
+security groups que administrar, sin NAT Gateway ni endpoints, y sin el
+impacto de cold start asociado a la configuración de red.
+
+**La segmentación se logra con IAM.** En ausencia de security groups y NACLs,
+el control de acceso de este diseño es la política de mínimo privilegio de
+cada función: `ListarEventos` solo lee la tabla `Eventos`; `Inscribir` solo
+accede a ambas tablas y publica en SNS; `MisInscripciones` solo lee
+`Inscripciones`; `Recordatorio` lee `Eventos`, solo marca el flag de
+notificación (`UpdateItem`), publica en SNS y envía a la DLQ. Es el
+equivalente serverless de la microsegmentación de red.
+
+**Si el sistema se desplegara dentro de una VPC** (alternativa analizada):
+subnets privadas, **Gateway Endpoint** para DynamoDB y S3 (sin costo por
+hora; el tráfico no sale a Internet) o **Interface Endpoints** para SNS/SQS
+(cobran por hora y por ENI), y NAT Gateway solo si hiciera falta salir a
+Internet. El trade-off es mayor complejidad operativa, ENIs y latencia
+adicional, sin beneficio para este alcance.
+
+**Nota sobre el sitio estático**: el website endpoint de S3 no soporta HTTPS
+propio (solo HTTP); el HTTPS del sistema está en la API Gateway. Para servir
+el sitio con HTTPS se interpone CloudFront delante del bucket, que es la
+configuración de producción recomendada.
+
 ## 5. Seguridad
 
 - **Mínimo privilegio por diseño**: cada función declara solo los permisos que

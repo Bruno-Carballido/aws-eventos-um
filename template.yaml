@@ -130,6 +130,9 @@ Resources:
         - SQSSendMessagePolicy: { QueueName: !GetAtt ColaDLQ.QueueName }
         - Statement:
             - Effect: Allow
+              Action: [dynamodb:UpdateItem]
+              Resource: !GetAtt TablaEventos.Arn
+            - Effect: Allow
               Action: [sns:Publish, sns:ListTopics]
               Resource: '*'
 
