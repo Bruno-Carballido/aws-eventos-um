@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
-Description: Sistema de inscripcion y recordatorios para eventos (S3 + API GW + Lambda + DynamoDB + EventBridge + SNS)
+Description: Sistema de inscripcion y recordatorios para eventos (ECS Fargate + FastAPI + ALB en VPC propia con subredes privadas y endpoints, DynamoDB, SNS, S3)
 
 Parameters:
   CorreoRemitente:
@@ -10,18 +9,190 @@ Parameters:
   RolEjecucion:
     Type: String
     Description: ARN del rol LabRole de AWS Academy (arn:aws:iam::<cuenta>:role/LabRole)
-
-Globals:
-  Function:
-    Runtime: python3.12
-    Timeout: 15
-    Environment:
-      Variables:
-        TABLA_EVENTOS: !Ref TablaEventos
-        TABLA_INSCRIPCIONES: !Ref TablaInscripciones
-        CORREO_REMITENTE: !Ref CorreoRemitente
+  ImagenBackend:
+    Type: String
+    Description: URI de la imagen Docker en ECR (ej. <cuenta>.dkr.ecr.us-east-1.amazonaws.com/aws-eventos-um-backend:latest)
 
 Resources:
+
+  # ---------- VPC propia del proyecto ----------
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - { Key: Name, Value: vpc-aws-eventos-um }
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - { Key: Name, Value: igw-aws-eventos-um }
+
+  AdjuntarInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Subredes publicas: solo el Application Load Balancer
+  SubredPublicaA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: subred-publica-a }
+
+  SubredPublicaB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: subred-publica-b }
+
+  # Subredes privadas: tareas ECS y endpoints. Sin ruta a Internet.
+  SubredPrivadaA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - { Key: Name, Value: subred-privada-a }
+
+  SubredPrivadaB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - { Key: Name, Value: subred-privada-b }
+
+  RutaPublica:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: rt-publica }
+
+  RutaPublicaInternet:
+    Type: AWS::EC2::Route
+    DependsOn: AdjuntarInternetGateway
+    Properties:
+      RouteTableId: !Ref RutaPublica
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  AsociacionPublicaA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubredPublicaA
+      RouteTableId: !Ref RutaPublica
+
+  AsociacionPublicaB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubredPublicaB
+      RouteTableId: !Ref RutaPublica
+
+  # Sin NAT: la tabla privada no tiene ruta 0.0.0.0/0. Los servicios de AWS se alcanzan por endpoints.
+  RutaPrivada:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: rt-privada-sin-internet }
+
+  AsociacionPrivadaA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubredPrivadaA
+      RouteTableId: !Ref RutaPrivada
+
+  AsociacionPrivadaB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubredPrivadaB
+      RouteTableId: !Ref RutaPrivada
+
+  # ---------- Endpoints (acceso privado a servicios de AWS) ----------
+  SGEndpoints:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: HTTPS desde la VPC hacia los endpoints de interfaz
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.20.0.0/16
+
+  EndpointS3:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref RutaPrivada
+
+  EndpointDynamoDB:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref RutaPrivada
+
+  EndpointECRApi:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.api
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubredPrivadaA, !Ref SubredPrivadaB]
+      SecurityGroupIds: [!Ref SGEndpoints]
+
+  EndpointECRDocker:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.dkr
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubredPrivadaA, !Ref SubredPrivadaB]
+      SecurityGroupIds: [!Ref SGEndpoints]
+
+  EndpointLogs:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubredPrivadaA, !Ref SubredPrivadaB]
+      SecurityGroupIds: [!Ref SGEndpoints]
+
+  EndpointSNS:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sns
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubredPrivadaA, !Ref SubredPrivadaB]
+      SecurityGroupIds: [!Ref SGEndpoints]
 
   # ---------- Datos ----------
   TablaEventos:
@@ -55,109 +226,185 @@ Resources:
             - { AttributeName: email, KeyType: HASH }
           Projection: { ProjectionType: ALL }
 
-  # ---------- API ----------
-  Api:
-    Type: AWS::Serverless::HttpApi
+  # ---------- Registro de Contenedores ----------
+  RepositorioECR:
+    Type: AWS::ECR::Repository
     Properties:
-      CorsConfiguration:
-        AllowOrigins: ['*']
-        AllowHeaders: ['Content-Type']
-        AllowMethods: ['GET', 'POST', 'OPTIONS']
+      RepositoryName: aws-eventos-um-backend
+      EmptyOnDelete: true
+      ImageScanningConfiguration:
+        ScanOnPush: true
 
-  ListarEventos:
-    Type: AWS::Serverless::Function
+  # ---------- Seguridad de red (ALB y tareas) ----------
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      Handler: app.handler
-      CodeUri: src/listar_eventos
-      Role: !Ref RolEjecucion
-      Events:
-        GetEventos:
-          Type: HttpApi
-          Properties: { ApiId: !Ref Api, Path: /eventos, Method: GET }
-      Policies:
-        - DynamoDBReadPolicy: { TableName: !Ref TablaEventos }
+      GroupDescription: Acceso HTTP publico hacia el Application Load Balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 10.20.0.0/16
 
-  Inscribir:
-    Type: AWS::Serverless::Function
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      Handler: app.handler
-      CodeUri: src/inscribir
-      Role: !Ref RolEjecucion
-      Environment:
-        Variables:
-          CORREO_REMITENTE: !Ref CorreoRemitente
-      Events:
-        PostInscripciones:
-          Type: HttpApi
-          Properties: { ApiId: !Ref Api, Path: /inscripciones, Method: POST }
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref TablaEventos }
-        - DynamoDBCrudPolicy: { TableName: !Ref TablaInscripciones }
-        - Statement:
-            - Effect: Allow
-              Action: [sns:CreateTopic, sns:Subscribe, sns:Publish, sns:ListTopics]
-              Resource: '*'
+      GroupDescription: Acceso restringido hacia las tareas ECS Fargate desde el ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.20.0.0/16
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
 
-  MisInscripciones:
-    Type: AWS::Serverless::Function
+  # ---------- Balanceador de Carga (ALB) ----------
+  Balanceador:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Handler: app.handler
-      CodeUri: src/mis_inscripciones
-      Role: !Ref RolEjecucion
-      Events:
-        GetInscripciones:
-          Type: HttpApi
-          Properties: { ApiId: !Ref Api, Path: /inscripciones, Method: GET }
-      Policies:
-        - DynamoDBReadPolicy: { TableName: !Ref TablaInscripciones }
+      Name: alb-eventos-um
+      Type: application
+      Scheme: internet-facing
+      Subnets: [!Ref SubredPublicaA, !Ref SubredPublicaB]
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
 
-  ColaDLQ:
-    Type: AWS::SQS::Queue
+  TargetGroupBackend:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      QueueName: recordatorio-dlq
-      MessageRetentionPeriod: 1209600   # 14 dias
+      Name: tg-eventos-backend
+      Port: 8000
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: '8000'
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
 
-  # EventBridge necesita permiso para escribir en la DLQ cuando un evento no se entrega
-  PoliticaColaDLQ:
-    Type: AWS::SQS::QueuePolicy
+  ListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      Queues: [!Ref ColaDLQ]
-      PolicyDocument:
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: events.amazonaws.com
-            Action: sqs:SendMessage
-            Resource: !GetAtt ColaDLQ.Arn
-            Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
+      LoadBalancerArn: !Ref Balanceador
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupBackend
 
-  Recordatorio:
-    Type: AWS::Serverless::Function
+  # ---------- Cluster y Tareas ECS (Fargate) ----------
+  ClusterECS:
+    Type: AWS::ECS::Cluster
     Properties:
-      Handler: app.handler
-      CodeUri: src/recordatorio
-      Role: !Ref RolEjecucion
-      Events:
-        Programado:
-          Type: Schedule
-          Properties:
-            Schedule: rate(1 hour)
-            DeadLetterConfig: { Arn: !GetAtt ColaDLQ.Arn }
-            RetryPolicy:
-              MaximumRetryAttempts: 2
-              MaximumEventAgeInSeconds: 3600
-      Policies:
-        - DynamoDBReadPolicy: { TableName: !Ref TablaEventos }
-        - SQSSendMessagePolicy: { QueueName: !GetAtt ColaDLQ.QueueName }
-        - Statement:
-            - Effect: Allow
-              Action: [dynamodb:UpdateItem]
-              Resource: !GetAtt TablaEventos.Arn
-            - Effect: Allow
-              Action: [sns:Publish, sns:ListTopics]
-              Resource: '*'
+      ClusterName: aws-eventos-um-cluster
+
+  LogGroupECS:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/aws-eventos-um-backend
+      RetentionInDays: 7
+
+  DefinicionTarea:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: aws-eventos-um-task
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !Ref RolEjecucion
+      TaskRoleArn: !Ref RolEjecucion
+      ContainerDefinitions:
+        - Name: backend-eventos
+          Image: !Ref ImagenBackend
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: TABLA_EVENTOS
+              Value: !Ref TablaEventos
+            - Name: TABLA_INSCRIPCIONES
+              Value: !Ref TablaInscripciones
+            - Name: CORREO_REMITENTE
+              Value: !Ref CorreoRemitente
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupECS
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  ServicioECS:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ListenerHTTP
+      - EndpointECRApi
+      - EndpointECRDocker
+      - EndpointLogs
+      - EndpointSNS
+      - EndpointS3
+      - EndpointDynamoDB
+    Properties:
+      ServiceName: servicio-eventos-backend
+      Cluster: !Ref ClusterECS
+      LaunchType: FARGATE
+      DesiredCount: 1
+      TaskDefinition: !Ref DefinicionTarea
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets: [!Ref SubredPrivadaA, !Ref SubredPrivadaB]
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      LoadBalancers:
+        - ContainerName: backend-eventos
+          ContainerPort: 8000
+          TargetGroupArn: !Ref TargetGroupBackend
+
+  # ---------- Escalado horizontal (1 a 3 tareas, por CPU) ----------
+  ObjetivoEscalado:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MinCapacity: 1
+      MaxCapacity: 3
+      ResourceId: !Sub service/${ClusterECS}/${ServicioECS.Name}
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      RoleARN: !Ref RolEjecucion
+
+  PoliticaEscalado:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: escalado-cpu-eventos
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ObjetivoEscalado
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 300
 
   # ---------- Sitio estatico ----------
   # CloudFront (OAC) no esta permitido en AWS Academy (cloudfront:CreateOriginAccessControl denegado),
@@ -184,13 +431,19 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub '${SitioWeb.Arn}/*'
 
-  # Los archivos del sitio se suben con:
-  #   aws s3 sync web/dist/ s3://<nombre-del-bucket>/
-
 Outputs:
   ApiUrl:
-    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com'
+    Description: URL publica del backend en el Application Load Balancer
+    Value: !Sub 'http://${Balanceador.DNSName}'
   UrlSitioWeb:
+    Description: URL del sitio web en S3
     Value: !GetAtt SitioWeb.WebsiteURL
   BucketSitioWeb:
+    Description: Nombre del bucket S3 para alojar el frontend
     Value: !Ref SitioWeb
+  RepositorioECRUri:
+    Description: URI del repositorio ECR creado para la imagen del backend
+    Value: !GetAtt RepositorioECR.RepositoryUri
+  VpcId:
+    Description: ID de la VPC creada para el proyecto
+    Value: !Ref VPC

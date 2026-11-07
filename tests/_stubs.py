@@ -15,6 +15,12 @@ class ClientError(Exception):
 
 
 def install_boto_stubs():
+    try:
+        import boto3  # noqa: F401
+        import botocore.exceptions  # noqa: F401
+        return  # librerías reales disponibles: no reemplazar
+    except ImportError:
+        pass
     if "boto3" not in sys.modules:
         boto3 = types.ModuleType("boto3")
         boto3.resource = lambda *a, **k: None

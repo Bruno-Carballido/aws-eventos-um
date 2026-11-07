@@ -2,106 +2,192 @@
 
 Proyecto de la materia AWS (UM). Permite consultar eventos, inscribirse y recibir
 una confirmación por correo, más un recordatorio automático antes de cada evento.
+El backend corre en Amazon ECS con AWS Fargate y FastAPI, detrás de un Application
+Load Balancer (ALB), dentro de una VPC propia con subredes privadas y endpoints.
 
 ## Arquitectura
 
 ```
-Navegador ── S3 (sitio estático index.html, website endpoint HTTP)
-     │ API HTTP
-     ▼
-API Gateway ──► Lambda ListarEventos ──► DynamoDB (Eventos)
+Navegador ──► S3 (sitio estático, website endpoint HTTP)
      │
-     └──► Lambda Inscribir ──► DynamoDB (Inscripciones)
-                    │  SNS: un topic por evento → email de confirmación
-EventBridge (cada 1 h) ──► Lambda Recordatorio ──► SNS → recordatorio
-Cada Lambda loguea en CloudWatch Logs.
+     │ HTTP (puerto 80)
+     ▼
+Application Load Balancer (subredes públicas, dos zonas)
+     │
+     │ HTTP (puerto 8000)
+     ▼
+ECS Fargate (subredes privadas, dos zonas, 1 a 3 tareas)
+     ├── Rutas: GET /eventos, POST /inscripciones, GET /inscripciones, GET /health
+     └── Planificador (APScheduler): recordatorios cada 1 hora dentro de cada tarea
+           │
+           │ endpoints de VPC (sin NAT, sin salida a Internet)
+           ├──► DynamoDB (Eventos, Inscripciones)
+           ├──► SNS (un topic por evento: confirmación y recordatorio)
+           ├──► CloudWatch Logs
+           └──► ECR (descarga de la imagen)
 ```
 
-- **S3**: aloja el sitio estático con website endpoint (HTTP). CloudFront no está
-  permitido en AWS Academy (`cloudfront:CreateOriginAccessControl` denegado), así que
-  el sitio no tiene HTTPS propio; la API sí va por HTTPS.
-- **API Gateway (HTTP API)**: expone `GET /eventos`, `POST /inscripciones` y
-  `GET /inscripciones?email=` (mis inscripciones), con CORS habilitado.
-- **Lambda** (Python 3.12): cuatro funciones — listar eventos, inscribir,
-  mis inscripciones y recordatorio.
-- **DynamoDB**: tabla `Eventos` e `Inscripciones` (GSI `porEvento` y `porEmail`),
-  modo pago por petición. Los eventos llevan `cupo` e `inscritos` (contador
-  atómico que bloquea la inscripción cuando se llena).
-- **SNS**: un topic por evento; los inscriptos se suscriben con su email.
-- **EventBridge** (regla programada): dispara el recordatorio cada 1 hora; solo notifica
-  eventos dentro de las próximas 24 h y marca `notificado` para no repetir.
-- **SQS (DLQ)**: cola muerta `recordatorio-dlq` para los eventos programados que
-  fallen tras 2 reintentos; permite investigar fallos sin perder el evento.
-- **CloudWatch**: logs y errores de las tres funciones.
+- **VPC propia** (`10.20.0.0/16`): dos subredes públicas para el ALB y dos subredes privadas para las tareas. Las privadas no tienen ruta a Internet y no hay NAT.
+- **Endpoints de VPC**: Gateway para S3 y DynamoDB; de interfaz para ECR (API y Docker), CloudWatch Logs y SNS.
+- **Application Load Balancer**: público, puerto 80, con health check en `/health`.
+- **ECS Fargate**: servicio con FastAPI y Uvicorn (0.25 vCPU y 0.5 GB de memoria). Escala de 1 a 3 tareas según el CPU promedio (objetivo 60 %).
+- **Recordatorios**: `APScheduler` corre dentro de cada tarea cada hora. Un reclamo condicional por evento en DynamoDB evita enviar el mismo recordatorio dos veces aunque haya varias tareas.
+- **DynamoDB**: tablas `Eventos` e `Inscripciones` (índices `porEvento` y `porEmail`), modo on-demand. Los cupos se controlan con un incremento condicional atómico (`inscritos < cupo`).
+- **SNS**: un topic por evento. Cada inscripto confirma su suscripción por correo.
+- **S3**: aloja el frontend compilado con React y Vite.
+- **ECR**: repositorio `aws-eventos-um-backend` con escaneo al subir.
+- **CloudWatch Logs**: grupo `/ecs/aws-eventos-um-backend`, retención de 7 días.
+
+## Requisitos
+
+- AWS CLI con el perfil de AWS Academy (`um`) y región `us-east-1`.
+- Docker en ejecución. En WSL: `sudo apt install -y docker.io` y permiso para el usuario en el grupo `docker`.
+- Python 3.12 o superior para las pruebas locales.
+- Node 22 para compilar el sitio web.
+
+## Pruebas
+
+```bash
+python -m pip install -r src/requirements.txt httpx
+python -m unittest discover tests      # 29 pruebas
+cfn-lint template.yaml
+```
+
+Las pruebas usan MagicMock para la lógica de negocio y `botocore.stub.Stubber` para validar los parámetros de DynamoDB contra el modelo real de AWS. `httpx` hace falta para las pruebas de la API.
 
 ## Despliegue (AWS Academy Learner Lab)
 
+### 1. Crear el stack
+
 ```bash
-sam build
-sam deploy --stack-name aws-eventos-um --region us-east-1 --resolve-s3 \n  --capabilities CAPABILITY_IAM \n  --parameter-overrides RolEjecucion=arn:aws:iam::<cuenta>:role/LabRole
-sam list endpoints -o
+aws cloudformation deploy \
+  --template-file template.yaml \
+  --stack-name aws-eventos-um \
+  --region us-east-1 \
+  --parameter-overrides \
+      RolEjecucion=arn:aws:iam::<cuenta>:role/LabRole \
+      ImagenBackend=<cuenta>.dkr.ecr.us-east-1.amazonaws.com/aws-eventos-um-backend:latest \
+      CorreoRemitente=organizador@example.com
 ```
 
-Luego:
+El template crea la VPC, las subredes, los endpoints, el ALB, el cluster ECS, el repositorio ECR, las tablas de DynamoDB y el bucket del sitio. No hace falta indicar VPC ni subredes.
+
+La imagen todavía no existe cuando se crea el stack. Mientras no esté subida, la tarea falla con `CannotPullContainerError`. Es el comportamiento esperado: CloudFormation espera a que el servicio esté estable, así que el comando no termina hasta que una tarea arranca. Subí la imagen (paso 2) desde otra terminal cuando el repositorio ya exista, y ECS reintenta solo.
+
+### 2. Compilar y subir la imagen a ECR
+
+Requiere Docker en ejecución.
 
 ```bash
-# 1. Cargar eventos de prueba
-python scripts/seed_eventos.py --tabla Eventos
+# En Linux, macOS o WSL:
+bash scripts/build_and_push.sh
 
-# 2. Construir el sitio (Vite + React)
+# En Windows (sin probar en esta sesión):
+scripts\build_and_push.bat
+```
+
+El script imprime la URI completa de la imagen, que es el valor de `ImagenBackend`.
+
+Si la tarea ya estaba fallando, forzar un nuevo despliegue para que tome la imagen:
+
+```bash
+aws ecs update-service --cluster aws-eventos-um-cluster --service servicio-eventos-backend --force-new-deployment
+```
+
+### 3. Cargar datos y publicar el sitio
+
+```bash
+# 1. Cargar eventos de prueba (desde la imagen, con las credenciales montadas en solo lectura)
+docker run --rm \
+  -v "$HOME/.aws:/root/.aws:ro" \
+  -e AWS_PROFILE=um -e AWS_DEFAULT_REGION=us-east-1 \
+  -v "$PWD/scripts:/scripts:ro" \
+  aws-eventos-um-backend python /scripts/seed_eventos.py --tabla Eventos
+
+# 2. Pegar la URL del balanceador (Output ApiUrl) en web/src/config.js (API_URL)
+
+# 3. Compilar el sitio web
 cd web && npm install && npm run build && cd ..
 
-# 3. Pegar el Output ApiUrl del stack en web/src/config.js (API_URL) y repetir el build
-
-# 4. Publicar el sitio en el bucket (el nombre sale del Output BucketSitioWeb)
+# 4. Publicar el sitio en el bucket S3 (Output BucketSitioWeb)
 aws s3 sync web/dist/ s3://<bucket-del-sitio>/ --delete
 ```
 
-La URL del sitio es el Output `UrlSitioWeb` (HTTPS). La distribución tarda unos
-minutos en propagarse tras el primer deploy.
+La URL del sitio está en el Output `UrlSitioWeb`. El sitio usa HTTP.
 
-> En Academy toda Lambda reutiliza el `LabRole` preexistente; no se crean roles
-> propios (restricción de IAM del laboratorio). El template ya queda así.
+### 4. Desmontar todo (para no dejar cobros activos)
 
-## Estructura
+El stack cobra por hora mientras existe: el ALB, la tarea mínima y los endpoints de interfaz. Para eliminarlo:
+
+```bash
+# 1. Vaciar el bucket del sitio (CloudFormation no lo borra si tiene objetos)
+aws s3 rm s3://<bucket-del-sitio>/ --recursive
+
+# 2. Borrar los topics SNS que creó la aplicación (no están en el stack)
+aws sns list-topics --query "Topics[?contains(TopicArn, ':evento-')].TopicArn" --output text
+aws sns delete-topic --topic-arn <arn-de-cada-topic>
+
+# 3. Borrar el stack (incluye el repositorio ECR con sus imágenes, por EmptyOnDelete)
+aws cloudformation delete-stack --stack-name aws-eventos-um
+aws cloudformation wait stack-delete-complete --stack-name aws-eventos-um
+```
+
+Después, verificar que no quedó nada: `aws ec2 describe-vpcs` no debe mostrar la VPC `vpc-aws-eventos-um`, y `aws elbv2 describe-load-balancers` no debe mostrar `alb-eventos-um`.
+
+## Escalado
+
+- Mínimo 1 tarea, máximo 3, objetivo de CPU promedio 60 %.
+- Escala hacia arriba con 60 segundos de enfriamiento y hacia abajo con 300 segundos.
+- Para ver la actividad de escalado: `aws application-autoscaling describe-scaling-activities --service-namespace ecs --resource-id service/aws-eventos-um-cluster/servicio-eventos-backend`.
+
+## Verificación realizada (2026-11-07, Academy us-east-1)
+
+- Pruebas unitarias: 29 de 29. `cfn-lint` y `validate-template` sin errores.
+- Contenedor local: `/health` 200, `/inscripciones` sin email 400.
+- Stack en `CREATE_COMPLETE`. Destino del ALB `healthy` en una subred privada.
+- API por el ALB: `/health` 200, `/eventos` 200, inscripción 201, duplicado 409, consulta por email 200, email inválido 400.
+- Concurrencia: 12 inscripciones simultáneas a un evento de cupo 10 dieron 10 respuestas 201 y 2 respuestas 409.
+- Recordatorios: dos ejecuciones simultáneas sobre el mismo evento enviaron una sola vez.
+- Escalado: con carga sostenida el servicio pasó de 1 a 3 tareas. Las tres quedaron `healthy` en las dos subredes privadas.
+- Defecto corregido durante la prueba: los eventos sin atributo `inscritos` no devolvían el campo y el sitio mostraba `undefined/30 lugares`. Ahora se devuelve `0`.
+
+## Estructura del proyecto
 
 ```
-template.yaml            # stack SAM
-src/listar_eventos/      # GET /eventos
-src/inscribir/           # POST /inscripciones (valida, deduplica, controla cupo, confirma por email)
-src/mis_inscripciones/   # GET /inscripciones?email= (mis inscripciones)
-src/recordatorio/        # programada por EventBridge, envía recordatorios
-web/                     # sitio Vite + React (npm run build genera web/dist/)
-tests/                   # tests unitarios (python -m unittest discover tests)
-scripts/seed_eventos.py
+template.yaml                # CloudFormation: VPC, endpoints, ECS, ALB, DynamoDB, ECR, S3
+src/
+  Dockerfile                 # Imagen Python 3.12-slim con Uvicorn en el puerto 8000
+  requirements.txt           # fastapi, uvicorn, boto3, apscheduler
+  app/
+    main.py                  # Aplicación FastAPI, CORS y ciclo de vida (planificador)
+    config.py                # Variables de entorno
+    scheduler.py             # Planificador APScheduler (cada hora)
+    routers/                 # Rutas HTTP (/health, /eventos, /inscripciones)
+    services/                # Lógica de negocio: cupos, inscripciones, recordatorios
+  inscribir/, listar_eventos/, recordatorio/, mis_inscripciones/
+                             # Versión anterior con Lambda. No entra en la imagen.
+                             # Pendiente: eliminar junto con sus pruebas.
+scripts/
+  build_and_push.sh / .bat   # Build de la imagen y push a ECR
+  seed_eventos.py            # Carga de eventos de prueba
+web/                         # Sitio en Vite + React
+tests/                       # Pruebas unitarias
+docs/                        # Documento, informe, presentación y diagramas
 ```
 
-## Notas de diseño (arquitectura orientada a eventos)
+## Notas de diseño
 
-- La inscripción se modela como un *domain event* (`InscripcionCreada`): la API
-  responde apenas se registra, y la confirmación se procesa de forma asíncrona
-  vía SNS — desacoplando el flujo de la respuesta HTTP.
-- **Limitación**: SNS solo entrega a suscripciones confirmadas. El correo de
-  confirmación de inscripción se publica en el momento de inscribirse, así que quien
-  todavía no confirmó la suscripción no lo recibe. Lo primero que llega es el correo
-  de confirmación de SNS, cuyo texto no es personalizable.
-- **Idempotencia**: dedup por email+evento en la inscripción y atributo
-  `notificado` en el evento para que un recordatorio no se envíe dos veces,
-  aunque la Lambda programada se ejecute repetidamente.
-- **Cupos**: el contador `inscritos` se incrementa con una condición atómica
-  (`inscritos < cupo`), de modo que dos inscripciones simultáneas no pueden
-  vender el último lugar dos veces; al llenarse, la API responde 409.
-- **Resiliencia**: el evento programado que falle tras 2 reintentos cae a la
-  DLQ (`recordatorio-dlq`, retención 14 días), desde donde puede re-procesarse.
-- **Lambda fuera de VPC**: las funciones solo acceden a servicios públicos
-  (DynamoDB, SNS, SQS), por lo que no se las conecta a una VPC — menos
-  complejidad, sin ENIs ni NAT, y menor latencia (concepto de la clase de
-  arquitecturas orientadas a eventos).
-- Confirmación y recordatorios comparten el topic del evento, así solo los
-  inscriptos de ese evento reciben correos.
-- La suscripción SNS por email requiere un clic de confirmación del usuario
-  (correo estándar de SNS).
-- Anti-repetición de recordatorios: atributo `notificado` en el ítem del evento.
-- Limitación conocida: `GET /inscripciones?email=` es público (sin
-  autenticación) — cualquiera puede consultar inscripciones conociendo el
-  email. Aceptable para la demo; se documenta en el informe de seguridad.
+- **Fargate**: no hay servidores EC2 que administrar. El costo es fijo por tarea mientras está encendida.
+- **Red sin NAT**: las tareas solo hablan con servicios de AWS, y para eso bastan los endpoints. Un NAT Gateway cobraría por hora sin aportar nada hoy. Si una tarea necesitara salir a Internet, se agrega entonces.
+- **Cupos concurrentes**: `ADD inscritos :uno` con condición `inscritos < cupo`, directo en DynamoDB. Funciona entre tareas porque la condición la evalúa DynamoDB.
+- **Recordatorios dentro de la tarea**: EventBridge podría disparar una tarea ECS, pero necesita un rol que Academy no permite crear. El planificador queda en la aplicación y el reclamo por evento evita duplicados.
+- **Roles IAM**: en AWS Academy `LabRole` cumple los dos papeles (ejecución y tarea). En producción se separan en roles de mínimo privilegio (ver `docs/Informe.md`, sección 6).
+
+## Limitaciones conocidas
+
+- La API no tiene autenticación. `GET /inscripciones?email=` responde a cualquiera que conozca el correo.
+- El sitio y el ALB usan HTTP. CloudFront está denegado en Academy, y el HTTPS del ALB requiere un certificado que no se probó.
+- Sin WAF ni límites de tasa.
+- El contenedor corre como root.
+- Una sola región. DynamoDB no tiene respaldos automáticos (point-in-time recovery no está activado).
+- Si la publicación de un recordatorio falla, la marca se libera y se reintenta en la siguiente hora. Un fallo de la tarea entre el reclamo y la publicación puede dejar un recordatorio sin enviar.

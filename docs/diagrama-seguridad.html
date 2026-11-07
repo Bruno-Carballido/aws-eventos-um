@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Diagrama de seguridad: Sistema de inscripción y recordatorios para eventos</title>
+  <title>Diagrama de seguridad · Sistema de inscripción y recordatorios para eventos</title>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -16,7 +16,7 @@
     h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
     .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
     .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
-    svg { width: 100%; min-width: 900px; display: block; }
+    svg { width: 100%; min-width: 800px; display: block; }
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
     .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
     .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
@@ -34,138 +34,147 @@
       <div class="pulse-dot"></div>
       <h1>Diagrama de seguridad</h1>
     </div>
-    <p class="subtitle">Sistema de inscripción y recordatorios para eventos · zonas de confianza, controles y debilidades conocidas</p>
+    <p class="subtitle">Sistema de inscripción y recordatorios para eventos · arquitectura ECS en us-east-1 · zonas de confianza, controles y debilidades conocidas</p>
   </div>
 
   <div class="diagram-container">
-    <svg viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 1000 530" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <marker id="ah-cyan" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#22d3ee"/></marker>
         <marker id="ah-amber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fbbf24"/></marker>
         <marker id="ah-violet" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#a78bfa"/></marker>
-        <marker id="ah-orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fb923c"/></marker>
         <marker id="ah-rose" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fb7185"/></marker>
-        <marker id="ah-slate" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
           <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
         </pattern>
       </defs>
 
-      <rect width="1000" height="720" fill="url(#grid)"/>
+      <rect width="1000" height="530" fill="url(#grid)"/>
 
       <!-- Zonas de confianza -->
-      <rect x="20" y="60" width="240" height="560" rx="12" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="8,4"/>
-      <text x="32" y="82" fill="#fb7185" font-size="10" font-weight="600">Zona pública</text>
-      <text x="32" y="96" fill="#94a3b8" font-size="8">sin confianza previa</text>
+      <rect x="20" y="40" width="225" height="440" rx="12" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="8,4"/>
+      <text x="32" y="62" fill="#fb7185" font-size="10">Internet</text>
+      <text x="32" y="78" fill="#94a3b8" font-size="9">sin confianza previa</text>
 
-      <rect x="300" y="60" width="370" height="560" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4"/>
-      <text x="312" y="82" fill="#fbbf24" font-size="10" font-weight="600">Cómputo con IAM</text>
-      <text x="312" y="96" fill="#94a3b8" font-size="8">rol LabRole en Academy</text>
+      <rect x="265" y="40" width="225" height="440" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4"/>
+      <text x="277" y="62" fill="#fbbf24" font-size="10">VPC 10.20.0.0/16</text>
+      <text x="277" y="78" fill="#94a3b8" font-size="9">subredes públicas</text>
 
-      <rect x="700" y="60" width="280" height="560" rx="12" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="8,4"/>
-      <text x="712" y="82" fill="#a78bfa" font-size="10" font-weight="600">Datos y mensajería</text>
-      <text x="712" y="96" fill="#94a3b8" font-size="8">acceso solo por IAM</text>
+      <rect x="510" y="40" width="225" height="440" rx="12" fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="8,4"/>
+      <text x="522" y="62" fill="#34d399" font-size="10">VPC · subredes privadas</text>
+      <text x="522" y="78" fill="#94a3b8" font-size="9">sin Internet</text>
 
-      <!-- Flujos -->
-      <path d="M140 186 L 140 250" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ah-rose)"/>
-      <text x="150" y="222" fill="#fb7185" font-size="8">1 · HTTP, sin cifrar</text>
-      <path d="M230 160 C 275 260, 275 380, 230 430" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
-      <text x="60" y="512" fill="#22d3ee" font-size="8">2 · HTTPS</text>
-      <path d="M230 440 C 275 400, 290 300, 320 230" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
-      <text x="60" y="500" fill="#fbbf24" font-size="8">3 · invoca</text>
-      <line x1="650" y1="135" x2="720" y2="140" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
-      <text x="652" y="128" fill="#a78bfa" font-size="8">4 · R/W</text>
-      <line x1="650" y1="200" x2="720" y2="230" stroke="#fb923c" stroke-width="1.5" marker-end="url(#ah-orange)"/>
-      <text x="655" y="208" fill="#fb923c" font-size="8">5 · pub</text>
-      <line x1="650" y1="350" x2="720" y2="320" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ah-rose)"/>
-      <text x="655" y="362" fill="#fb7185" font-size="8">6 · DLQ</text>
-      <line x1="650" y1="380" x2="720" y2="420" stroke="#64748b" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#ah-slate)"/>
-      <text x="656" y="398" fill="#64748b" font-size="8">7 · logs</text>
+      <rect x="755" y="40" width="225" height="440" rx="12" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="8,4"/>
+      <text x="767" y="62" fill="#a78bfa" font-size="10">Servicios de AWS</text>
+      <text x="767" y="78" fill="#94a3b8" font-size="9">por endpoints</text>
 
-      <!-- Zona pública -->
-      <rect x="50" y="130" width="180" height="56" rx="6" fill="#0f172a"/>
-      <rect x="50" y="130" width="180" height="56" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
-      <text x="140" y="154" fill="white" font-size="12" font-weight="600" text-anchor="middle">Usuario</text>
-      <text x="140" y="171" fill="#94a3b8" font-size="9" text-anchor="middle">navegador</text>
+      <!-- Zona Internet -->
+      <rect x="35" y="150" width="175" height="60" rx="6" fill="#111c33" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="122.5" y="173" fill="white" font-size="12" text-anchor="middle">Usuario</text>
+      <text x="122.5" y="189" fill="#94a3b8" font-size="9" text-anchor="middle">navegador</text>
 
-      <rect x="50" y="250" width="180" height="60" rx="6" fill="#0f172a"/>
-      <rect x="50" y="250" width="180" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="140" y="274" fill="white" font-size="12" font-weight="600" text-anchor="middle">Amazon S3</text>
-      <text x="140" y="291" fill="#94a3b8" font-size="9" text-anchor="middle">lectura pública · HTTP</text>
-      <rect x="50" y="318" width="180" height="22" rx="4" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
-      <text x="140" y="333" fill="#fb7185" font-size="9" font-weight="600" text-anchor="middle">! sin HTTPS</text>
+      <line x1="122.5" y1="210" x2="122.5" y2="250" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ah-rose)"/>
+      <text x="132" y="226" fill="#fb7185" font-size="9">1 · HTTP</text>
+      <text x="132" y="240" fill="#fb7185" font-size="9">sin cifrar</text>
 
-      <rect x="50" y="400" width="180" height="60" rx="6" fill="#0f172a"/>
-      <rect x="50" y="400" width="180" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="140" y="424" fill="white" font-size="12" font-weight="600" text-anchor="middle">API Gateway</text>
-      <text x="140" y="441" fill="#94a3b8" font-size="9" text-anchor="middle">HTTPS · CORS abierto</text>
-      <rect x="50" y="468" width="180" height="22" rx="4" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
-      <text x="140" y="483" fill="#fb7185" font-size="9" font-weight="600" text-anchor="middle">! sin autenticación</text>
+      <rect x="35" y="250" width="175" height="70" rx="6" fill="#2b1d0c" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="122.5" y="270" fill="white" font-size="12" text-anchor="middle">Amazon S3</text>
+      <text x="122.5" y="285" fill="#94a3b8" font-size="9" text-anchor="middle">sitio estático, HTTP</text>
+      <rect x="45" y="292" width="155" height="18" rx="4" fill="#4c0519" stroke="#fb7185" stroke-width="1"/>
+      <text x="122.5" y="304" fill="#fb7185" font-size="9" text-anchor="middle">! sin HTTPS</text>
 
-      <!-- Cómputo -->
-      <rect x="320" y="110" width="330" height="50" rx="6" fill="#0f172a"/>
-      <rect x="320" y="110" width="330" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="485" y="131" fill="white" font-size="11" font-weight="600" text-anchor="middle">ListarEventos</text>
-      <text x="485" y="147" fill="#94a3b8" font-size="8" text-anchor="middle">solo lee la tabla Eventos</text>
+      <rect x="35" y="350" width="175" height="62" rx="6" fill="none" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="45" y="368" fill="#fb7185" font-size="9">Sin cifrar en tránsito</text>
+      <text x="45" y="384" fill="#cbd5e1" font-size="9">correo de la inscripción</text>
+      <text x="45" y="398" fill="#cbd5e1" font-size="9">viaja en claro por HTTP</text>
 
-      <rect x="320" y="180" width="330" height="50" rx="6" fill="#0f172a"/>
-      <rect x="320" y="180" width="330" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="485" y="201" fill="white" font-size="11" font-weight="600" text-anchor="middle">Inscribir</text>
-      <text x="485" y="217" fill="#94a3b8" font-size="8" text-anchor="middle">lee y escribe ambas tablas · publica en SNS</text>
+      <!-- Flujo usuario a ALB -->
+      <line x1="210" y1="180" x2="285" y2="180" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ah-rose)"/>
+      <rect x="210" y="156" width="60" height="22" fill="#0b1222"/>
+      <text x="237" y="165" fill="#fb7185" font-size="9" text-anchor="middle">2 · HTTP</text>
+      <text x="237" y="178" fill="#fb7185" font-size="9" text-anchor="middle">sin cifrar</text>
 
-      <rect x="320" y="250" width="330" height="50" rx="6" fill="#0f172a"/>
-      <rect x="320" y="250" width="330" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="485" y="271" fill="white" font-size="11" font-weight="600" text-anchor="middle">MisInscripciones</text>
-      <text x="485" y="287" fill="#94a3b8" font-size="8" text-anchor="middle">solo lee Inscripciones (índice porEmail)</text>
+      <!-- Zona pública: ALB -->
+      <rect x="285" y="150" width="170" height="118" rx="6" fill="#2b1d0c" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="370" y="172" fill="white" font-size="12" text-anchor="middle">ALB público</text>
+      <text x="370" y="187" fill="#94a3b8" font-size="9" text-anchor="middle">listener HTTP 80</text>
+      <rect x="297" y="196" width="146" height="17" rx="4" fill="#4c0519" stroke="#fb7185" stroke-width="1"/>
+      <text x="370" y="208" fill="#fb7185" font-size="9" text-anchor="middle">! sin HTTPS</text>
+      <rect x="297" y="219" width="146" height="17" rx="4" fill="#4c0519" stroke="#fb7185" stroke-width="1"/>
+      <text x="370" y="231" fill="#fb7185" font-size="9" text-anchor="middle">! sin autenticación</text>
+      <rect x="297" y="242" width="146" height="17" rx="4" fill="#4c0519" stroke="#fb7185" stroke-width="1"/>
+      <text x="370" y="254" fill="#fb7185" font-size="9" text-anchor="middle">! CORS abierto · sin WAF</text>
 
-      <rect x="320" y="320" width="330" height="50" rx="6" fill="#0f172a"/>
-      <rect x="320" y="320" width="330" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="485" y="341" fill="white" font-size="11" font-weight="600" text-anchor="middle">Recordatorio</text>
-      <text x="485" y="357" fill="#94a3b8" font-size="8" text-anchor="middle">lee Eventos · marca notificado · publica · envía a DLQ</text>
+      <rect x="285" y="285" width="170" height="52" rx="6" fill="#053b2f" stroke="#34d399" stroke-width="1.5"/>
+      <text x="295" y="300" fill="#34d399" font-size="9">Grupo de seguridad ALB</text>
+      <text x="295" y="314" fill="#cbd5e1" font-size="9">entrada 80 desde 0.0.0.0/0</text>
+      <text x="295" y="328" fill="#cbd5e1" font-size="9">salida 8000 a 10.20.0.0/16</text>
 
-      <rect x="320" y="400" width="330" height="50" rx="6" fill="#0f172a"/>
-      <rect x="320" y="400" width="330" height="50" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="485" y="421" fill="white" font-size="11" font-weight="600" text-anchor="middle">EventBridge</text>
-      <text x="485" y="437" fill="#94a3b8" font-size="8" text-anchor="middle">solo puede invocar Recordatorio</text>
+      <!-- Flujo ALB a tareas -->
+      <line x1="455" y1="205" x2="530" y2="205" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
+      <rect x="458" y="176" width="68" height="26" fill="#0b1222"/>
+      <text x="492.5" y="186" fill="#fbbf24" font-size="9" text-anchor="middle">3 · 8000</text>
+      <text x="492.5" y="199" fill="#94a3b8" font-size="9" text-anchor="middle">solo SG ALB</text>
 
-      <!-- Datos y mensajería -->
-      <rect x="720" y="110" width="240" height="60" rx="6" fill="#0f172a"/>
-      <rect x="720" y="110" width="240" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-      <text x="840" y="134" fill="white" font-size="12" font-weight="600" text-anchor="middle">DynamoDB</text>
-      <text x="840" y="151" fill="#94a3b8" font-size="9" text-anchor="middle">cifrado en reposo por defecto</text>
+      <!-- Zona privada: tareas -->
+      <rect x="530" y="150" width="185" height="150" rx="6" fill="#053b2f" stroke="#34d399" stroke-width="1.5"/>
+      <text x="622.5" y="172" fill="white" font-size="12" text-anchor="middle">Tareas ECS Fargate</text>
+      <text x="622.5" y="187" fill="#94a3b8" font-size="9" text-anchor="middle">FastAPI · puerto 8000</text>
+      <text x="622.5" y="201" fill="#94a3b8" font-size="9" text-anchor="middle">rol LabRole · sin IP pública</text>
+      <rect x="542" y="214" width="161" height="17" rx="4" fill="#4c0519" stroke="#fb7185" stroke-width="1"/>
+      <text x="622.5" y="226" fill="#fb7185" font-size="9" text-anchor="middle">! contenedor como root</text>
+      <rect x="542" y="237" width="161" height="17" rx="4" fill="#4c0519" stroke="#fb7185" stroke-width="1"/>
+      <text x="622.5" y="249" fill="#fb7185" font-size="9" text-anchor="middle">! LabRole compartido</text>
 
-      <rect x="720" y="200" width="240" height="60" rx="6" fill="#0f172a"/>
-      <rect x="720" y="200" width="240" height="60" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
-      <text x="840" y="224" fill="white" font-size="12" font-weight="600" text-anchor="middle">Amazon SNS</text>
-      <text x="840" y="241" fill="#94a3b8" font-size="9" text-anchor="middle">correo solo con suscripción confirmada</text>
+      <rect x="530" y="322" width="185" height="50" rx="6" fill="#053b2f" stroke="#34d399" stroke-width="1.5"/>
+      <text x="540" y="337" fill="#34d399" font-size="9">Grupo de seguridad tareas</text>
+      <text x="540" y="351" fill="#cbd5e1" font-size="9">entrada 8000 solo desde ALB</text>
+      <text x="540" y="365" fill="#cbd5e1" font-size="9">sin IP pública · sin NAT</text>
 
-      <rect x="720" y="290" width="240" height="60" rx="6" fill="#0f172a"/>
-      <rect x="720" y="290" width="240" height="60" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
-      <text x="840" y="314" fill="white" font-size="12" font-weight="600" text-anchor="middle">Amazon SQS · DLQ</text>
-      <text x="840" y="331" fill="#94a3b8" font-size="9" text-anchor="middle">solo EventBridge, con aws:SourceAccount</text>
+      <!-- Flujos tareas a servicios -->
+      <line x1="715" y1="170" x2="775" y2="170" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <rect x="725" y="153" width="40" height="13" fill="#0b1222"/>
+      <text x="745" y="163" fill="#a78bfa" font-size="9" text-anchor="middle">4 · IAM</text>
+      <line x1="715" y1="225" x2="775" y2="225" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <rect x="725" y="208" width="40" height="13" fill="#0b1222"/>
+      <text x="745" y="218" fill="#a78bfa" font-size="9" text-anchor="middle">5 · IAM</text>
+      <line x1="715" y1="280" x2="775" y2="280" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <rect x="725" y="263" width="40" height="13" fill="#0b1222"/>
+      <text x="745" y="273" fill="#a78bfa" font-size="9" text-anchor="middle">6 · IAM</text>
 
-      <rect x="720" y="380" width="240" height="60" rx="6" fill="#0f172a"/>
-      <rect x="720" y="380" width="240" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="840" y="404" fill="white" font-size="12" font-weight="600" text-anchor="middle">CloudWatch Logs</text>
-      <text x="840" y="421" fill="#94a3b8" font-size="9" text-anchor="middle">sin correos ni nombres en los logs</text>
+      <!-- Zona endpoints -->
+      <rect x="775" y="147" width="185" height="46" rx="6" fill="#1e1538" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="867.5" y="165" fill="white" font-size="12" text-anchor="middle">Amazon DynamoDB</text>
+      <text x="867.5" y="181" fill="#94a3b8" font-size="9" text-anchor="middle">cifrado en reposo</text>
 
-      <!-- Controles transversales -->
-      <rect x="720" y="480" width="240" height="110" rx="6" fill="rgba(136, 19, 55, 0.2)" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,3"/>
-      <text x="732" y="500" fill="#fb7185" font-size="9" font-weight="600">Controles transversales</text>
-      <text x="732" y="518" fill="#cbd5e1" font-size="8">· sin secretos en el código</text>
-      <text x="732" y="533" fill="#cbd5e1" font-size="8">· mínimo privilegio por función (diseño)</text>
-      <text x="732" y="548" fill="#cbd5e1" font-size="8">· Secrets Manager no requerido hoy</text>
-      <text x="732" y="563" fill="#cbd5e1" font-size="8">· cifrado en tránsito con TLS</text>
-      <text x="732" y="578" fill="#cbd5e1" font-size="8">· sin VPC: control de acceso solo por IAM</text>
+      <rect x="775" y="202" width="185" height="46" rx="6" fill="#1e1538" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="867.5" y="220" fill="white" font-size="12" text-anchor="middle">Amazon SNS</text>
+      <text x="867.5" y="236" fill="#94a3b8" font-size="9" text-anchor="middle">suscripción confirmada</text>
+
+      <rect x="775" y="257" width="185" height="46" rx="6" fill="#1e1538" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="867.5" y="275" fill="white" font-size="12" text-anchor="middle">CloudWatch Logs</text>
+      <text x="867.5" y="291" fill="#94a3b8" font-size="9" text-anchor="middle">/ecs/aws-eventos-um-backend</text>
+
+      <rect x="775" y="330" width="185" height="46" rx="6" fill="#1e1538" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="867.5" y="348" fill="white" font-size="12" text-anchor="middle">Amazon ECR</text>
+      <text x="867.5" y="364" fill="#94a3b8" font-size="9" text-anchor="middle">imagen escaneada al subir</text>
+
+      <rect x="775" y="400" width="185" height="60" rx="6" fill="#053b2f" stroke="#34d399" stroke-width="1.5"/>
+      <text x="785" y="416" fill="#34d399" font-size="9">Grupo de seguridad endpoints</text>
+      <text x="785" y="431" fill="#cbd5e1" font-size="9">entrada 443 desde 10.20.0.0/16</text>
+      <text x="785" y="446" fill="#cbd5e1" font-size="9">acceso solo por IAM</text>
 
       <!-- Leyenda -->
-      <text x="40" y="650" fill="#94a3b8" font-size="9" font-weight="600">Leyenda</text>
-      <line x1="110" y1="646" x2="140" y2="646" stroke="#22d3ee" stroke-width="1.5"/><text x="148" y="650" fill="#94a3b8" font-size="9">HTTPS cifrado</text>
-      <line x1="270" y1="646" x2="300" y2="646" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3"/><text x="308" y="650" fill="#94a3b8" font-size="9">sin cifrado o error de diseño</text>
-      <line x1="500" y1="646" x2="530" y2="646" stroke="#fbbf24" stroke-width="1.5"/><text x="538" y="650" fill="#94a3b8" font-size="9">invocación con IAM</text>
-      <line x1="690" y1="646" x2="720" y2="646" stroke="#a78bfa" stroke-width="1.5"/><text x="728" y="650" fill="#94a3b8" font-size="9">acceso a datos con IAM</text>
-      <text x="40" y="676" fill="#fb7185" font-size="9" font-weight="600">! Debilidad conocida</text>
-      <text x="200" y="676" fill="#94a3b8" font-size="9">Ver sección 2.4 del informe. Las dos debilidades visibles en el diagrama son el sitio por HTTP y la API sin autenticación.</text>
+      <line x1="40" y1="506" x2="70" y2="506" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="78" y="510" fill="#94a3b8" font-size="10">HTTP sin cifrar</text>
+      <line x1="190" y1="506" x2="220" y2="506" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="228" y="510" fill="#94a3b8" font-size="10">puerto 8000 desde el ALB</text>
+      <line x1="390" y1="506" x2="420" y2="506" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="428" y="510" fill="#94a3b8" font-size="10">acceso por IAM</text>
+      <rect x="530" y="500" width="20" height="12" rx="3" fill="#053b2f" stroke="#34d399" stroke-width="1.5"/>
+      <text x="558" y="510" fill="#94a3b8" font-size="10">control activo</text>
+      <rect x="660" y="499" width="22" height="14" rx="4" fill="#4c0519" stroke="#fb7185" stroke-width="1"/>
+      <text x="671" y="510" fill="#fb7185" font-size="9" text-anchor="middle">!</text>
+      <text x="690" y="510" fill="#94a3b8" font-size="10">debilidad conocida</text>
     </svg>
   </div>
 
@@ -173,30 +182,35 @@
     <div class="card">
       <div class="card-header"><div class="card-dot" style="background:#34d399"></div><h3>Controles activos</h3></div>
       <ul>
-        <li>• HTTPS en la API y TLS hacia los servicios de AWS.</li>
-        <li>• Una política por función, con permisos mínimos en el diseño.</li>
-        <li>• La cola DLQ acepta solo a EventBridge de esta cuenta.</li>
-        <li>• Correos solo a suscripciones confirmadas por el usuario.</li>
+        <li>• Grupo de seguridad del ALB con solo el puerto 80 abierto.</li>
+        <li>• Grupo de seguridad de las tareas con solo el puerto 8000, desde el ALB.</li>
+        <li>• Tareas sin IP pública y sin NAT, sin ruta a Internet.</li>
+        <li>• Endpoints de VPC que aceptan solo el puerto 443 desde la VPC.</li>
         <li>• DynamoDB cifra los datos en reposo por defecto.</li>
+        <li>• Correos de SNS solo a suscripciones confirmadas por el usuario.</li>
+        <li>• Imagen escaneada en ECR al subirla.</li>
       </ul>
     </div>
     <div class="card">
       <div class="card-header"><div class="card-dot" style="background:#fb7185"></div><h3>Debilidades conocidas</h3></div>
       <ul>
-        <li>• El sitio se sirve por HTTP.</li>
-        <li>• GET de inscripciones por email sin autenticación.</li>
+        <li>• El sitio en S3 se sirve por HTTP, sin HTTPS.</li>
+        <li>• El ALB atiende por HTTP, sin HTTPS.</li>
+        <li>• La API no tiene autenticación, así que el GET de inscripciones por correo es público.</li>
         <li>• CORS abierto a cualquier origen.</li>
-        <li>• Sin límite de tasa por ruta.</li>
-        <li>• LabRole compartido por todas las funciones en Academy.</li>
+        <li>• Sin WAF ni límite de tasa por ruta.</li>
+        <li>• El contenedor corre como root.</li>
+        <li>• LabRole compartido como rol de ejecución y de tarea.</li>
       </ul>
     </div>
     <div class="card">
       <div class="card-header"><div class="card-dot" style="background:#fbbf24"></div><h3>Mejoras para producción</h3></div>
       <ul>
-        <li>• CloudFront con Origin Access Control: HTTPS y bucket privado.</li>
+        <li>• HTTPS con certificado en el ALB, o CloudFront donde esté permitido.</li>
         <li>• Cognito o autorizador JWT en la API.</li>
-        <li>• Un rol por función, con política mínima.</li>
-        <li>• Límites de tasa y AWS WAF en la API.</li>
+        <li>• Un rol por función, con permisos mínimos.</li>
+        <li>• AWS WAF delante de la API.</li>
+        <li>• Usuario sin privilegios en el contenedor.</li>
       </ul>
     </div>
   </div>

@@ -12,7 +12,7 @@ EVENTOS = [
     {
         "eventoId": "e-001",
         "titulo": "Charla de AWS en la UM",
-        "descripcion": "Introduccion a serverless con SAM y Lambda.",
+        "descripcion": "Introduccion a contenedores con ECS Fargate y balanceo con ALB.",
         "lugar": "Aula 101, Universidad de Montevideo",
         "cupo": 30,
         "fecha": (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT18:00:00Z"),

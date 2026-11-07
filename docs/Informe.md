@@ -1,9 +1,6 @@
-# Informe del proyecto: sistema de inscripción y recordatorios para eventos
+# Informe del proyecto sobre el sistema de inscripción y recordatorios para eventos
 
-Este informe amplía el documento del proyecto con el detalle que pide la consigna:
-arquitectura, seguridad, escalabilidad, resiliencia, costos y permisos de IAM.
-Todo lo que describe está desplegado y probado en AWS Academy, salvo que se indique
-lo contrario en la sección 7.
+Este informe describe la arquitectura, la seguridad, la escalabilidad, la resiliencia, los costos y los permisos de IAM del sistema. El backend corre en contenedores con Amazon ECS y AWS Fargate, detrás de un Application Load Balancer (ALB), dentro de una VPC propia con subredes privadas y endpoints de VPC. Todo lo que se describe como verificado se desplegó y probó en AWS Academy, en la región us-east-1.
 
 ## 1. Arquitectura
 
@@ -11,285 +8,278 @@ lo contrario en la sección 7.
 
 | Componente | Servicio | Función |
 |---|---|---|
-| Sitio | Amazon S3 (website endpoint) | Entrega la página React compilada. |
-| API | Amazon API Gateway (HTTP API) | Expone `GET /eventos`, `POST /inscripciones` y `GET /inscripciones?email=`. |
-| Lógica | AWS Lambda (Python 3.12, cuatro funciones) | Listar eventos, inscribir, consultar inscripciones y enviar recordatorios. |
-| Datos | Amazon DynamoDB (tablas `Eventos` e `Inscripciones`) | Eventos, cupos e inscripciones. Índices `porEvento` y `porEmail`. |
-| Notificaciones | Amazon SNS (un topic por evento) | Correos de confirmación y de recordatorio. |
-| Programación | Regla programada de Amazon EventBridge | Dispara `Recordatorio` cada hora. |
-| Fallos | Amazon SQS (cola DLQ) | Recibe los eventos programados que fallan tras los reintentos. |
-| Observabilidad | Amazon CloudWatch Logs | Logs y errores de las funciones y de la API. |
+| Sitio web | Amazon S3 (website endpoint) | Entrega el frontend compilado con React y Vite. |
+| Balanceador | Application Load Balancer (ALB), subredes públicas | Recibe tráfico HTTP en el puerto 80, lo reenvía a las tareas en el puerto 8000 y verifica su estado en `/health`. |
+| Backend | Amazon ECS con AWS Fargate, subredes privadas | Ejecuta la API en Python 3.12 con FastAPI y Uvicorn (`GET /eventos`, `POST /inscripciones`, `GET /inscripciones`). Corre de 1 a 3 tareas. |
+| Planificador | APScheduler (`AsyncIOScheduler`) dentro de cada tarea | Envía los recordatorios cada hora, con un reclamo condicional por evento. |
+| Base de datos | Amazon DynamoDB | Tablas `Eventos` e `Inscripciones` (índices `porEvento` y `porEmail`) en modo bajo demanda, con cifrado en reposo. |
+| Notificaciones | Amazon SNS | Envía correos de confirmación y recordatorios con un topic por evento. |
+| Registro de imágenes | Amazon ECR (`aws-eventos-um-backend`) | Almacena la imagen Docker del backend, de unos 187 MB. |
+| Red | Amazon VPC (`vpc-aws-eventos-um`, 10.20.0.0/16) | Subredes públicas para el ALB, subredes privadas para las tareas y endpoints de VPC. No hay NAT. |
+| Registros | Amazon CloudWatch Logs | Grupo `/ecs/aws-eventos-um-backend`, con retención de 7 días. |
+
+La versión anterior del proyecto usaba Lambda, API Gateway, una regla de EventBridge y una cola SQS DLQ. Se reemplazaron por ECS Fargate, el ALB y el planificador dentro de cada tarea.
 
 ### 1.2 Flujo de tráfico
 
-1. El usuario abre el sitio en S3. La página consulta la API.
-2. API Gateway invoca `ListarEventos`, que lee la tabla `Eventos`.
-3. Al inscribirse, API Gateway invoca `Inscribir`. La función valida el evento, evita
-   duplicados, incrementa el contador de cupo de forma condicional y guarda la
-   inscripción.
-4. `Inscribir` suscribe el correo al topic del evento y publica el mensaje de
-   confirmación.
-5. Cada hora, EventBridge invoca `Recordatorio`. La función busca los eventos de las
-   próximas 24 horas, publica el recordatorio en el topic y marca el evento como
-   notificado.
-6. Si una ejecución programada falla dos veces, EventBridge envía el evento a la DLQ.
-7. Todas las funciones escriben en CloudWatch Logs.
+```
+Navegador ──► S3 (sitio estático, website endpoint HTTP)
+     │
+     │ HTTP (puerto 80)
+     ▼
+Application Load Balancer (subredes públicas, dos zonas)
+     │
+     │ HTTP (puerto 8000)
+     ▼
+ECS Fargate, FastAPI (subredes privadas, de 1 a 3 tareas)
+     │
+     │ endpoints de VPC (sin NAT y sin salida a Internet)
+     ├──► DynamoDB (Eventos, Inscripciones)
+     ├──► SNS (un topic por evento)
+     ├──► CloudWatch Logs
+     └──► ECR (descarga de la imagen)
+```
 
-Los tres diagramas están en `docs/`. El de componentes y tráfico es `diagrama-arquitectura.png`.
-El de red, con el alcance público y privado, es `diagrama-red.png`. El de seguridad,
-con zonas de confianza, controles y debilidades, es `diagrama-seguridad.png`.
+1. El usuario abre el sitio web en S3.
+2. La página envía las solicitudes al DNS del ALB en el puerto 80.
+3. El ALB reenvía las peticiones al puerto 8000 de una tarea sana, ubicada en una de las subredes privadas:
+   - `GET /eventos` lee la tabla `Eventos` y devuelve el catálogo ordenado por fecha con los cupos disponibles.
+   - `POST /inscripciones` valida que no haya una inscripción previa, incrementa el contador de cupo de forma atómica (`inscritos < cupo`), guarda la inscripción en DynamoDB y publica la confirmación en SNS.
+   - `GET /inscripciones?email=` consulta el índice `porEmail` de la tabla `Inscripciones` y devuelve el historial del usuario.
+4. Cada hora, el planificador de cada tarea busca los eventos de las próximas 24 horas. Antes de publicar un recordatorio, reclama el evento con una escritura condicional sobre el campo `notificado` en DynamoDB, de modo que solo una tarea lo envía.
+5. Las tareas envían sus registros a CloudWatch Logs.
 
 ### 1.3 Decisiones de diseño
 
-- Serverless de punta a punta. No hay servidores que administrar ni instancias que
-  mantener encendidas.
-- Las funciones no están en una VPC. Ningún recurso del proyecto es privado, así que
-  una VPC sumaría subredes, NAT y endpoints sin aportar seguridad real.
-- Un topic de SNS por evento. Así, cada inscripto recibe solo los mensajes de los
-  eventos a los que se inscribió.
-- La confirmación no bloquea la respuesta HTTP. La API responde apenas se guarda la
-  inscripción.
+- Fargate evita mantener máquinas virtuales EC2 y aplicar parches al sistema operativo. El costo es fijo por tarea mientras esté encendida.
+- El planificador corre dentro de cada tarea con APScheduler. No necesita un disparador externo, y AWS Academy no permite crear los roles que ese disparador necesitaría. El reclamo condicional por evento evita envíos duplicados entre tareas.
+- Las tareas están en subredes privadas sin ruta a Internet y sin NAT. Hablan con los servicios de AWS por endpoints de VPC. Los de tipo Gateway son para S3 y DynamoDB, y los de tipo interfaz para ECR API, ECR Docker, CloudWatch Logs y SNS, con DNS privado en ambas subredes. Un NAT Gateway cobraría por hora sin aportar nada hoy. Si una tarea necesitara salir a Internet, se agregaría entonces.
+- El control de cupos está en DynamoDB. La condición `attribute_not_exists(inscritos) OR inscritos < :cupo` previene la sobreventa a nivel de base de datos, también cuando varias tareas reciben inscripciones al mismo tiempo.
 
 ## 2. Seguridad
 
-### 2.1 Redes públicas y privadas
-
-Todo el sistema usa endpoints públicos de AWS, protegidos con IAM y HTTPS. No hay
-redes privadas porque no hay recursos que deban quedar ocultos.
+### 2.1 Canales de comunicación
 
 | Canal | Protocolo | Exposición | Control |
 |---|---|---|---|
-| Usuario hacia S3 | HTTP | Pública | Política de bucket de solo lectura |
-| Usuario hacia API Gateway | HTTPS | Pública | CORS abierto para la demo |
-| API Gateway hacia Lambda | Interno de AWS | Privado | Política de recurso de la función |
-| Lambda hacia DynamoDB, SNS y SQS | HTTPS | Privado | IAM con mínimo privilegio |
-| SNS hacia el correo del usuario | SMTP | Pública | Suscripción confirmada por el usuario |
+| Usuario a S3 | HTTP | Pública | Política de bucket de solo lectura pública. |
+| Usuario a ALB | HTTP (puerto 80) | Pública | Grupo de seguridad del ALB con entrada TCP 80 desde 0.0.0.0/0. |
+| ALB a tareas ECS | HTTP (puerto 8000) | Privada | Grupo de seguridad de las tareas con entrada TCP 8000 solo desde el grupo del ALB. |
+| Tareas ECS a DynamoDB, SNS, ECR y CloudWatch Logs | HTTPS (puerto 443) | Privada | Endpoints de VPC en las subredes privadas. Sin NAT y sin salida a Internet. |
+| SNS a correo del usuario | SMTP con TLS | Pública | Confirmación de suscripción previa por parte del usuario. |
 
-Las funciones corren fuera de una VPC. Si el proyecto se llevara a una VPC, haría
-falta una subred privada, endpoints de DynamoDB y S3, endpoints de interfaz para SNS
-y SQS, y un NAT Gateway si alguna función necesitara salir a Internet.
+### 2.2 Grupos de seguridad
 
-### 2.2 Security groups y control de acceso
+- El grupo del ALB acepta TCP 80 desde 0.0.0.0/0 y solo puede enviar tráfico a 10.20.0.0/16 en el puerto 8000.
+- El grupo de las tareas acepta TCP 8000 únicamente desde el grupo del ALB. Su salida es TCP 443 hacia 10.20.0.0/16 y hacia 0.0.0.0/0. La salida a Internet no tiene ruta, así que en la práctica no sale nada.
+- El grupo de los endpoints acepta TCP 443 desde 10.20.0.0/16.
 
-El proyecto no tiene security groups. Un security group protege recursos dentro de
-una VPC, y aquí no hay recursos en una VPC. El control de acceso recae en IAM:
+Las tareas no tienen IP pública. Una petición directa a una tarea no llega, porque no hay ruta desde Internet y el grupo solo acepta tráfico del ALB.
 
-- `ListarEventos` solo lee la tabla `Eventos`.
-- `Inscribir` lee y escribe ambas tablas, y publica en SNS.
-- `MisInscripciones` solo lee la tabla `Inscripciones`.
-- `Recordatorio` lee `Eventos`, actualiza el atributo `notificado`, publica en SNS
-  y envía mensajes a la DLQ.
-- La regla de EventBridge solo puede invocar la función `Recordatorio`.
-- La cola DLQ solo acepta mensajes de EventBridge de esta cuenta.
+### 2.3 Protocolos, cifrado e identidad
 
-### 2.3 Protocolos y cifrado
+- DynamoDB cifra los datos en reposo con claves administradas por AWS.
+- Las llamadas del contenedor a DynamoDB, SNS, ECR y CloudWatch Logs usan HTTPS y viajan por los endpoints de VPC dentro de la red de AWS.
+- La aplicación no guarda credenciales en código ni en variables de entorno. Las credenciales temporales provienen del rol asignado a la tarea.
 
-- La API usa HTTPS. API Gateway no sirve el endpoint por HTTP.
-- El sitio usa HTTP. El website endpoint de S3 no admite HTTPS propio. Esta es la
-  debilidad más visible del sistema.
-- DynamoDB cifra los datos en reposo por defecto. Las conexiones de las funciones a
-  DynamoDB, SNS y SQS usan TLS.
-- No hay llaves ni contraseñas en el código. La configuración viaja en variables de
-  entorno y las credenciales las entrega el rol de ejecución.
-- Secrets Manager no se usa porque el proyecto no maneja secretos de terceros. Si se
-  integrara un proveedor externo con API key, se guardaría en Secrets Manager o en
-  Parameter Store.
+### 2.4 Debilidades conocidas
 
-### 2.4 Límites de seguridad conocidos
-
-- La API no tiene autenticación. `GET /inscripciones?email=` devuelve las
-  inscripciones de cualquier email que alguien conozca. En producción iría detrás de
-  Amazon Cognito o de un autorizador JWT.
-- El sitio no tiene HTTPS. En producción, CloudFront con Origin Access Control
-  resolvería el HTTPS y permitiría un bucket privado. En Academy, CloudFront está
-  denegado (sección 6).
-- La respuesta de `GET /inscripciones` incluye el nombre del inscripto, aunque el
-  contrato original pedía solo cinco campos.
-- No hay límite de tasa configurado por ruta. Un cliente puede enviar peticiones en bucle hasta la cuota general de la cuenta.
-- Los logs no imprimen correos ni nombres. La función `Recordatorio` imprime solo
-  IDs de evento.
+- La API no tiene autenticación. `GET /inscripciones?email=` responde a quien conozca el correo.
+- El sitio, el ALB y el tráfico entre el ALB y las tareas usan HTTP. No hay HTTPS. CloudFront está denegado en Academy, y el HTTPS del ALB requiere un certificado de ACM que no se probó.
+- No hay WAF ni límite de tasa por ruta.
+- El contenedor corre como root. La mejora pendiente es un usuario sin privilegios.
+- El rol LabRole es compartido y tiene permisos amplios. En producción se separa por función (sección 6).
 
 ## 3. Escalabilidad
 
-### 3.1 Modelo elegido
+### 3.1 Configuración
 
-El sistema escala sin instancias que el equipo administre. La alternativa clásica
-sería EC2 con un Auto Scaling group detrás de un balanceador. Para esta carga no
-conviene, por tres motivos:
+- El servicio ECS arranca con 1 tarea.
+- Application Auto Scaling define un mínimo de 1 tarea y un máximo de 3.
+- La política de seguimiento de objetivo usa el CPU promedio del servicio, con un objetivo de 60 %.
+- El escalado hacia arriba tiene un cooldown de 60 segundos, y hacia abajo de 300 segundos.
+- Cada tarea usa 0.25 vCPU y 0.5 GB de memoria.
+- Application Auto Scaling usa el rol vinculado al servicio `AWSServiceRoleForApplicationAutoScaling_ECSService`. El parámetro LabRole aparece en la plantilla, pero el escalado no lo usa.
 
-1. Una instancia encendida cobra por hora aunque nadie use el sistema.
-2. La alta disponibilidad con EC2 exige al menos dos instancias en dos zonas de
-   disponibilidad, un balanceador y, si hay subredes privadas, un NAT Gateway por
-   zona. Cada pieza cobra por hora.
-3. El Auto Scaling group reacciona con retraso. Escala por métricas de CPU o de
-   solicitudes que se promedian en minutos, mientras que Lambda crea entornos por
-   solicitud.
+### 3.2 Por qué escala solo con carga sostenida
 
-ECS con Fargate tiene el mismo problema de costo fijo. No se usa ni EC2 ni ECS en
-este proyecto.
+La política de seguimiento de objetivo compara el CPU promedio del servicio contra el 60 %. Un pico corto no alcanza para disparar una acción de escalado, porque la política necesita ver la métrica por encima del objetivo durante varios puntos de medición. Por eso la capacidad sube cuando la carga se mantiene y baja más lento, con un cooldown de 300 segundos, para evitar oscilaciones. Este es el comportamiento estándar de la política de AWS.
 
-### 3.2 Qué escala y con qué mecanismo
+### 3.3 Prueba de escalado
 
-| Componente | Cómo escala | Límite a considerar |
-|---|---|---|
-| API Gateway | Acepta solicitudes según la demanda | Cuota de solicitudes por segundo de la cuenta. |
-| Lambda | Crea un entorno de ejecución por solicitud concurrente | Concurrencia total de la cuenta por región. |
-| DynamoDB en modo pago por petición | Reparte la capacidad automáticamente | Sin cuota práctica para esta carga. Hay límites por partición. |
-| SNS | Publica a los suscriptores en paralelo | Cuota de publicaciones por segundo. |
-| Recordatorio | Una ejecución por hora, sin escalado | No aplica. |
+Con 60 conexiones paralelas, el CPU llegó a entre 75 y 83 % durante tres minutos. La capacidad pasó de 1 a 2 tareas y luego a 3. Las tres quedaron `healthy` repartidas en las dos subredes privadas (10.20.10.x y 10.20.11.x).
 
-### 3.3 Cuándo se enciende y cuándo se apaga
+Queda sin configurar el escalado por peticiones por segundo del ALB.
 
-- No hay instancias encendidas. Cada solicitud activa una ejecución de Lambda y la
-  libera al terminar.
-- En un pico de inscripciones, Lambda crea más entornos en paralelo. DynamoDB absorbe
-  las escrituras. El contador de cupo sigue siendo exacto porque el incremento es
-  condicional.
-- Cuando no hay tráfico, el costo es cero. Solo se paga por ejecución y por
-  almacenamiento.
-- El recordatorio corre 24 veces por día. Su carga no depende de los usuarios.
-- El primer arranque de una función fría tarda más. Es el costo de no mantener
-  instancias encendidas.
+## 4. Resiliencia y fallas
 
-### 3.4 Qué pasa con un pico de demanda
+### 4.1 Distribución en dos zonas
 
-Supongamos que se abren las inscripciones de un evento con 500 lugares y 2 000
-personas lo intentan en un minuto. Las solicitudes llegan a la API, Lambda crea
-entornos en paralelo y cada inscripción intenta incrementar el contador. Las que
-llegan después de agotarse el cupo reciben un 409 sin escribir nada. Los correos se
-publican en SNS sin frenar la respuesta. El límite real sería la concurrencia de la
-cuenta, no la cantidad de instancias.
+- El ALB está en dos zonas, con las subredes públicas 10.20.0.0/24 (zona a) y 10.20.1.0/24 (zona b).
+- Las tareas están en dos subredes privadas, 10.20.10.0/24 (zona a) y 10.20.11.0/24 (zona b). En la prueba se verificaron tareas en 10.20.10.x y en 10.20.11.x.
+- DynamoDB replica los datos en tres zonas de la región, según la documentación de Amazon DynamoDB.
+- SNS es un servicio administrado por AWS. Su disponibilidad por zona no se probó en esta entrega.
 
-### 3.5 TCO comparado
+### 4.2 Comportamiento ante fallas
 
-El costo total de propiedad compara cuánto cuesta mantener el sistema, no solo
-cuánto cuesta cada recurso.
-
-| Concepto | Serverless (esta solución) | EC2 con ASG y balanceador |
-|---|---|---|
-| Cómputo | Por ejecución | Por hora de cada instancia, 24 horas al día |
-| Red de alta disponibilidad | Incluida en el servicio | Balanceador, NAT Gateway por zona |
-| Parcheo y sistema operativo | No aplica | A cargo del equipo |
-| Escalado | Automático | Configurado y probado por el equipo |
-| Costo ocioso | Cero | Mínimo de instancias encendidas |
-
-No calculé el monto exacto de la alternativa. Hacerlo con la calculadora de precios
-de AWS es un paso pendiente (sección 7).
-
-## 4. Resiliencia
-
-### 4.1 Diseño multi-zona de disponibilidad
-
-El requisito pide multi-AZ. En este proyecto la redundancia en varias zonas de
-disponibilidad la aportan los servicios gestionados. No la configuramos nosotros con
-subredes, porque no hay subredes. Lo que sigue describe cada servicio.
-
-- DynamoDB replica automáticamente los datos en tres zonas de disponibilidad de la
-  región. AWS publica un SLA de disponibilidad de 99,99 por ciento [4].
-- SNS usa zonas de disponibilidad separadas dentro de la región y permite reintentos
-  y colas de mensajes fallidos en las suscripciones [5].
-- Lambda ejecuta las funciones en varias zonas de disponibilidad de la región.
-  Esta afirmación no quedó citada en esta revisión y debe verificarse antes de la
-  defensa.
-- API Gateway y SQS son servicios regionales gestionados con redundancia interna.
-  No los cité en esta revisión.
-- S3 almacena los objetos en varias zonas. Tampoco lo cité en esta revisión.
-
-Lo que no cubre el diseño es una caída de la región entera. El sistema usa una sola
-región (us-east-1, la que permite Academy). Para resistirla habría que replicar a una
-segunda región con DynamoDB global tables y repetir el despliegue allí.
-
-### 4.2 Qué pasa en cada falla
-
-| Falla | Efecto para el usuario | Efecto en los datos | Cómo se recupera |
+| Falla | Efecto en el usuario | Efecto en los datos | Recuperación |
 |---|---|---|---|
-| Una zona de disponibilidad | Ninguno visible. | Ninguno. | Automático, por los servicios gestionados. |
-| API Gateway o Lambda devuelven error | La página muestra "No se pudo conectar con la API" y ofrece reintentar. | Depende del punto de falla (ver las filas siguientes). | El usuario reintenta. |
-| Falla antes de escribir la inscripción | Error 500. | Nada guardado. | El usuario reintenta. |
-| Falla después de incrementar el cupo y antes de guardar la inscripción | Error 500. | El cupo se pierde. | Hoy no se corrige solo. Es un defecto conocido (sección 7). |
-| Falla después de guardar, al publicar en SNS | Error 500, aunque la inscripción existe. | La inscripción queda guardada sin correo. | Al reintentar, la API responde 409 "ya está inscripto" y el correo nunca llega. Es un defecto conocido. |
-| `Recordatorio` falla | Ninguno inmediato. | Sin cambios. | EventBridge reintenta dos veces con una edad máxima de una hora. Si sigue fallando, el evento va a la DLQ. |
-| Se pierde una ejecución horaria | El recordatorio sale en la siguiente ejecución. | Ninguno. | La ventana de 24 horas cubre una ejecución perdida. |
-| Borrado o escritura accidental en DynamoDB | Datos incorrectos o faltantes. | Pérdida posible. | Hoy no hay respaldos. Recomendación: activar point-in-time recovery [4]. |
-| Correo de confirmación no confirmado | El inscripto no recibe el correo de inscripción. | Ninguno. | Requiere confirmar el clic de SNS. Es una limitación de SNS. |
-| Caída de la región | El sistema no responde. | Los datos quedan en la región. | Fuera del alcance de la demo. |
+| Caída de una tarea o del contenedor | Con dos o más tareas, el ALB envía el tráfico a las que siguen sanas. Con una sola tarea, el servicio no responde hasta que ECS reprograma una tarea nueva. | Ninguno. | ECS reprograma las tareas que fallan para mantener la cantidad deseada. Es el comportamiento documentado de ECS y todavía está pendiente de demostrar en esta entrega. |
+| Falla de una zona de disponibilidad | Con dos o más tareas repartidas en dos zonas, el ALB sigue atendiendo desde la zona sana. Con una sola tarea, hay interrupción hasta que ECS la reprograma en la zona sana. | Ninguno. DynamoDB replica los datos en tres zonas. | Igual que la fila anterior. Pendiente de probar con una falla provocada. |
+| Evento sin lugares disponibles | La API responde 409. | La base de datos no cambia. | Comportamiento esperado por regla de negocio. |
+| Error en el envío de un recordatorio | Ese recordatorio no sale en esa hora. | Si la publicación falla, la marca se libera. Si la tarea falla entre el reclamo y la publicación, el recordatorio puede quedar sin enviar. | La siguiente ejecución horaria lo reintenta cuando la marca se liberó. |
 
-### 4.3 Objetivos de recuperación
+### 4.3 Decisión de mínimo de 1 tarea
 
-- El tiempo de recuperación (RTO) no está definido. Las fallas transitorias se corrigen
-  reintentando. Los eventos que llegan a la DLQ requieren intervención manual.
-- El punto de recuperación (RPO) no está definido. Sin point-in-time recovery, el RPO
-  de un borrado accidental es todo el historial posterior.
+El servicio usa un mínimo de 1 tarea para reducir el costo, porque cada tarea encendida cobra por hora. La consecuencia es que la falla de esa tarea, o de la zona donde está, deja el servicio sin respuesta hasta que ECS la reprograma. La alternativa es un mínimo de 2 tareas repartidas en dos zonas, que cubre la falla de una zona sin interrupción a cambio de un costo mayor por hora.
+
+### 4.4 Verificaciones realizadas
+
+- Las pruebas unitarias pasan 29 de 29. Usan boto3 con `Stubber` para validar los parámetros contra el modelo de DynamoDB.
+- `cfn-lint` no reporta errores, y `aws cloudformation validate-template` pasa en la cuenta de Academy.
+- En el contenedor local, `/health` responde 200 e `/inscripciones` sin email responde 400.
+- Stack `aws-eventos-um` en `CREATE_COMPLETE`. Una tarea en 10.20.10.30 con destino del ALB `healthy`.
+- Por el ALB, la API responde `/health` 200, `/eventos` 200, inscripción 201, duplicado 409, consulta por email 200 y email inválido 400.
+- En concurrencia, 12 inscripciones simultáneas a un evento de cupo 10 dieron 10 respuestas 201 y 2 respuestas 409. El contador final es 10.
+- En los recordatorios, dos ejecuciones simultáneas sobre el mismo evento, como si fueran dos tareas, Una envió y la otra no envió nada. El campo `notificado` quedó escrito en DynamoDB, y una ejecución posterior no envió nada.
+- El escalado se describe en la sección 3.3.
+- Se encontró y corrigió un defecto. Los eventos sin atributo `inscritos` devolvían la respuesta sin ese campo, y la tarjeta del sitio mostraba «undefined/30 lugares». Se corrigió en `listar_eventos` (inscritos por defecto 0), con prueba, y se reconstruyó y desplegó la imagen.
 
 ## 5. Costos
 
-El diseño es de pago por uso. Con la carga de la demo, el costo queda muy por debajo
-de un dólar por mes.
+### 5.1 Componentes que cobran por hora
 
-- Lambda ofrece un millón de solicitudes y 400 000 GB-segundo gratis por mes [1].
-- DynamoDB en modo pago por petición cobra por lectura y escritura [2].
-- SNS cobra por solicitudes de API y por entregas de notificaciones [3].
-- API Gateway y EventBridge cobran por invocación. Estas tarifas no están citadas en
-  esta revisión.
-- Los costos de error están acotados. La DLQ evita reintentos infinitos y el atributo
-  `notificado` evita envíos repetidos.
+Mientras el stack existe, cobran por hora:
 
-Con un presupuesto de créditos limitado conviene evitar servicios que cobran por hora
-aunque no se usen. Por eso el proyecto descarta EC2, balanceadores y NAT Gateway.
+- La tarea Fargate mínima encendida todo el tiempo (0.25 vCPU y 0.5 GB), más las tareas adicionales que enciende el escalado.
+- El ALB, encendido todo el tiempo.
+- Los cuatro endpoints de VPC de tipo interfaz (ECR API, ECR Docker, CloudWatch Logs y SNS), en dos zonas.
 
-## 6. Roles y permisos con un rol distinto de LabRole
+### 5.2 Componentes por uso
 
-Academy entrega un único rol, `LabRole`, a todas las funciones. Esto significa que
-cada función tiene más permisos de los que necesita. Un despliegue fuera de Academy
-crearía un rol por función, con permisos mínimos.
+DynamoDB, ECR, S3 y CloudWatch Logs cobran según el consumo. El consumo de la demo no se midió.
 
-| Servicio o función | Por qué no alcanza LabRole | Estado |
-|---|---|---|
-| CloudFront con Origin Access Control | Academy lo deniega: `cloudfront:CreateOriginAccessControl`. | Verificado el 7 de noviembre. |
-| Un rol de ejecución por función | La guía de Academy restringe crear roles. Con un rol propio, cada función tendría solo sus permisos. | Restricción documentada del lab. No probado en esta sesión. |
-| Autenticación de usuarios (Cognito) | Crear un user pool y un autorizador necesita permisos de Cognito. | No probado en Academy. |
-| VPC, subredes y endpoints | Crear redes necesita permisos de EC2 de red. | No probado en Academy. |
-| Correos desde una cuenta propia (SES) | El envío a direcciones arbitrarias suele estar restringido. | No probado en esta sesión. |
-| Secrets Manager | No hace falta hoy. Si se agregara un proveedor externo, sí. | No aplica. |
-| AWS WAF y límites de tasa | Requieren permisos de WAF. | No probado en Academy. |
+### 5.3 Estimación mensual pendiente
 
-Un rol propio por función reemplazaría el parámetro `RolEjecucion` por cuatro roles,
-cada uno con su política mínima. Ese cambio requiere
-un rol que pueda crear y asumir roles (`iam:CreateRole` e `iam:PassRole`), que
-Academy no ofrece.
+El monto mensual no está calculado en este informe. Se calcula con la calculadora de precios de AWS, cargando las tareas, el ALB, los cuatro endpoints en dos zonas y el uso previsto de DynamoDB, ECR, S3 y CloudWatch. Pendiente.
 
-## 7. Limitaciones y pendientes
+### 5.4 Desmontaje después de las pruebas
 
-Limitaciones del sistema:
+Por instrucción del estudiante, se deshacen todos los cambios para no tener gastos sorpresa. El stack se elimina al terminar las pruebas. Antes hay que vaciar el bucket del sitio y borrar los topics SNS que creó la aplicación, porque no forman parte del stack. Los pasos están en el README, sección 4.
 
-- Sin autenticación. Cualquiera que conozca un email puede consultar sus inscripciones.
-- El sitio usa HTTP, porque CloudFront está denegado en Academy.
-- El correo de inscripción solo llega a quien ya confirmó la suscripción de SNS.
-- Una falla entre el cupo y el guardado puede consumir un lugar sin inscripción.
-- Una falla al publicar en SNS deja la inscripción sin correo y con respuesta de error.
-- `cupo=0` en un evento sin contador previo puede vender un lugar.
-- `ListarEventos` y `Recordatorio` leen la tabla completa. Sirve para un catálogo
-  chico, no para uno grande.
-- Sin point-in-time recovery ni respaldos.
-- Una sola región.
+## 6. Roles y permisos de IAM
 
-Pendientes antes de la entrega:
+### 6.1 Uso de LabRole en AWS Academy
 
-- Calcular el TCO de la alternativa EC2 con la calculadora de precios de AWS.
-- Citar la documentación de Lambda y de API Gateway sobre multi-AZ.
-- Activar point-in-time recovery en el template.
+- Los permisos de IAM no permiten crear roles ni políticas propias (`iam:CreateRole` denegado).
+- La cuenta incluye un rol preexistente llamado `LabRole` (`arn:aws:iam::<cuenta>:role/LabRole`) con permisos amplios para los servicios del laboratorio.
+- LabRole cumple dos papeles, como rol de ejecución (`ExecutionRoleArn`) y como rol de tarea (`TaskRoleArn`).
+- CloudFront está denegado en Academy.
+- Academy tampoco permite crear los roles que requeriría un disparador externo del planificador. Por eso el planificador queda dentro de la tarea (sección 1.3).
 
-Decisiones tomadas:
+### 6.2 Servicios que necesitan permisos
 
-- Los defectos de la sección 4.2 se presentan como limitaciones. No se corrigen antes
-  de la entrega.
-- El proyecto no usa ECS ni EC2. La consigna no lo exige y el diseño serverless
-  cubre el alcance.
+| Servicio | Qué necesita | Lo que permite Academy | Rol en producción |
+|---|---|---|---|
+| ECS, descarga de la imagen | Leer la imagen desde ECR | LabRole como rol de ejecución | `ecsTaskExecutionRole` |
+| ECS, registros | Escribir en CloudWatch Logs | LabRole como rol de ejecución | `ecsTaskExecutionRole` |
+| API y planificador | Leer y escribir en DynamoDB, publicar en SNS | LabRole como rol de tarea | `backendEventosTaskRole` |
+| Application Auto Scaling | Leer métricas y cambiar la cantidad de tareas | Rol vinculado al servicio `AWSServiceRoleForApplicationAutoScaling_ECSService` | Sin cambios |
+| S3 (sitio web) | Lectura pública del bucket | Política de bucket de solo lectura pública | `cloudfrontOACPolicy`, si se agrega CloudFront |
+| Disparador externo del planificador | No aplica | No se pueden crear roles para un disparador externo | No aplica, porque el planificador queda dentro de la tarea |
 
-## 8. Fuentes
+### 6.3 Roles de mínimo privilegio en producción
 
-[1] https://aws.amazon.com/lambda/pricing
-[2] https://aws.amazon.com/dynamodb/pricing
-[3] https://aws.amazon.com/sns/pricing
-[4] https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/disaster-recovery-resiliency.html
-[5] https://docs.aws.amazon.com/sns/latest/dg/sns-resilience.html
+En un entorno fuera de AWS Academy, el principio de mínimo privilegio exige separar estos permisos en roles independientes.
+
+#### 1. Rol de ejecución de ECS (`ecsTaskExecutionRole`)
+
+Confía en `ecs-tasks.amazonaws.com`. Permite al agente de ECS descargar la imagen y configurar los registros antes de iniciar la aplicación. Este rol no debe tener acceso a DynamoDB, SNS ni datos de negocio.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/ecs/aws-eventos-um-backend:*"
+    }
+  ]
+}
+```
+
+#### 2. Rol de la tarea de ECS (`backendEventosTaskRole`)
+
+Confía en `ecs-tasks.amazonaws.com`. Son las credenciales que usa la aplicación dentro del contenedor para operar con AWS. Este rol solo accede a las tablas y a los topics del proyecto. No tiene permisos sobre ECR ni sobre la administración de ECS.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DynamoDBEventos",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:Scan",
+        "dynamodb:GetItem",
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/Eventos"
+    },
+    {
+      "Sid": "DynamoDBInscripciones",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:Query"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:*:*:table/Inscripciones",
+        "arn:aws:dynamodb:*:*:table/Inscripciones/index/*"
+      ]
+    },
+    {
+      "Sid": "SNSEventos",
+      "Effect": "Allow",
+      "Action": [
+        "sns:CreateTopic",
+        "sns:Subscribe",
+        "sns:Publish",
+        "sns:ListTopics"
+      ],
+      "Resource": "arn:aws:sns:*:*:evento-*"
+    }
+  ]
+}
+```
+
+### 6.4 Comparación de roles
+
+| Componente | Rol en AWS Academy | Rol en producción | Permisos requeridos |
+|---|---|---|---|
+| Agente de ECS (descarga y logs) | `LabRole` | `ecsTaskExecutionRole` | Lectura de ECR y escritura de logs en CloudWatch. |
+| API en FastAPI | `LabRole` | `backendEventosTaskRole` | Operaciones sobre `Eventos`, `Inscripciones` y SNS. |
+| Planificador interno | `LabRole` | `backendEventosTaskRole` | Lectura y actualización en `Eventos`, publicación en SNS. |
+| Sitio web en S3 | Sin rol (público) | `cloudfrontOACPolicy` | Acceso al bucket restringido a la distribución de CloudFront. |
+
+## 7. Limitaciones
+
+- Las debilidades de seguridad (autenticación, HTTP, WAF, root en el contenedor y LabRole compartido) están en la sección 2.4.
+- El servicio tiene un mínimo de 1 tarea por decisión de costo (sección 4.3).
+- Una sola región (us-east-1).
+- DynamoDB no tiene respaldos automáticos, porque point-in-time recovery no está activado.
+- Si la tarea falla entre el reclamo de un recordatorio y su publicación, ese recordatorio puede no salir.

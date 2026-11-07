@@ -34,130 +34,179 @@
       <div class="pulse-dot"></div>
       <h1>Diagrama de red: Sistema de inscripción y recordatorios para eventos</h1>
     </div>
-    <p class="subtitle">Qué está expuesto a Internet, qué queda dentro de AWS y por dónde viaja el tráfico</p>
+    <p class="subtitle">VPC propia, subredes públicas y privadas, endpoints de VPC y sin NAT</p>
   </div>
 
   <div class="diagram-container">
-    <svg viewBox="0 0 1000 740" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 1000 770" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="ah-cyan" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#22d3ee"/></marker>
-        <marker id="ah-amber" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fbbf24"/></marker>
         <marker id="ah-violet" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#a78bfa"/></marker>
-        <marker id="ah-orange" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fb923c"/></marker>
-        <marker id="ah-rose" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fb7185"/></marker>
+        <marker id="ah-slate" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
           <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
         </pattern>
       </defs>
 
-      <rect width="1000" height="740" fill="url(#grid)"/>
+      <rect width="1000" height="770" fill="url(#grid)"/>
 
       <!-- Zona Internet -->
-      <rect x="20" y="60" width="190" height="600" rx="12" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4"/>
-      <text x="32" y="82" fill="#94a3b8" font-size="10" font-weight="600">Internet</text>
-      <text x="32" y="96" fill="#64748b" font-size="8">tráfico público</text>
+      <rect x="20" y="70" width="170" height="660" rx="12" fill="none" stroke="#94a3b8" stroke-width="1" stroke-dasharray="6,4"/>
+      <text x="32" y="92" fill="#94a3b8" font-size="10" font-weight="600">Internet</text>
+      <text x="32" y="106" fill="#64748b" font-size="8">tráfico público</text>
 
       <!-- Region AWS -->
-      <rect x="240" y="60" width="740" height="600" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4"/>
-      <text x="256" y="82" fill="#fbbf24" font-size="10" font-weight="600">AWS Region us-east-1 · AWS Academy Learner Lab</text>
-      <text x="256" y="96" fill="#94a3b8" font-size="8">sin VPC · sin subredes · sin NAT · sin security groups</text>
+      <rect x="220" y="70" width="760" height="660" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4"/>
+      <text x="236" y="92" fill="#fbbf24" font-size="10" font-weight="600">AWS Region us-east-1 · AWS Academy Learner Lab</text>
+      <text x="236" y="106" fill="#94a3b8" font-size="8">servicios regionales fuera de la VPC, alcanzados por endpoints</text>
 
-      <!-- Flechas (van detrás de las cajas) -->
-      <path d="M185 316 C 225 270, 240 190, 280 140" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
-      <text x="196" y="236" fill="#22d3ee" font-size="8">1 · HTTP</text>
-      <line x1="185" y1="328" x2="280" y2="320" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
-      <text x="196" y="352" fill="#22d3ee" font-size="8">2 · HTTPS</text>
-      <path d="M470 305 C 500 270, 510 220, 530 190" fill="none" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
-      <line x1="470" y1="318" x2="530" y2="255" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
-      <text x="392" y="262" fill="#22d3ee" font-size="8">3 · invocación</text>
-      <path d="M470 525 C 500 480, 510 420, 530 395" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
-      <text x="478" y="470" fill="#fbbf24" font-size="8">4 · cada 1 h</text>
-      <line x1="730" y1="190" x2="800" y2="140" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
-      <text x="738" y="160" fill="#a78bfa" font-size="8">5 · HTTPS</text>
-      <path d="M730 258 C 760 220, 770 180, 800 150" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
-      <line x1="730" y1="275" x2="800" y2="320" stroke="#fb923c" stroke-width="1.5" marker-end="url(#ah-orange)"/>
-      <text x="740" y="302" fill="#fb923c" font-size="8">6 · SNS</text>
-      <line x1="730" y1="388" x2="800" y2="332" stroke="#fb923c" stroke-width="1.5" marker-end="url(#ah-orange)"/>
-      <line x1="730" y1="402" x2="800" y2="468" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ah-rose)"/>
-      <text x="664" y="500" fill="#fb7185" font-size="8">7 · fallos</text>
-      <path d="M640 450 C 690 500, 720 560, 800 565" fill="none" stroke="#fb7185" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#ah-rose)"/>
-      <text x="700" y="538" fill="#fb7185" font-size="8">8 · logs</text>
+      <!-- VPC -->
+      <rect x="236" y="118" width="504" height="492" rx="10" fill="rgba(2, 6, 23, 0.6)" stroke="#64748b" stroke-width="1.5"/>
+      <text x="250" y="136" fill="#cbd5e1" font-size="9" font-weight="600">VPC vpc-aws-eventos-um · 10.20.0.0/16 · endpoints de VPC abajo</text>
 
-      <!-- Cajas: entrada -->
-      <rect x="45" y="300" width="140" height="56" rx="6" fill="#0f172a"/>
-      <rect x="45" y="300" width="140" height="56" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
-      <text x="115" y="325" fill="white" font-size="12" font-weight="600" text-anchor="middle">Usuario</text>
-      <text x="115" y="342" fill="#94a3b8" font-size="9" text-anchor="middle">navegador</text>
+      <!-- Flechas (detrás de las cajas) -->
+      <line x1="190" y1="163" x2="250" y2="163" stroke="#94a3b8" stroke-width="1.5"/>
+      <line x1="170" y1="259" x2="260" y2="259" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+      <text x="176" y="250" fill="#22d3ee" font-size="8">1 · HTTP</text>
+      <line x1="367" y1="288" x2="367" y2="377" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+      <text x="374" y="330" fill="#22d3ee" font-size="8">2 · puerto 8000</text>
+      <line x1="622" y1="288" x2="622" y2="377" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+      <line x1="290" y1="424" x2="290" y2="503" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <text x="296" y="440" fill="#a78bfa" font-size="8">5 · ECR</text>
+      <line x1="372" y1="424" x2="372" y2="503" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <line x1="454" y1="424" x2="454" y2="503" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <text x="448" y="440" fill="#a78bfa" font-size="8" text-anchor="end">6 · Logs</text>
+      <line x1="536" y1="424" x2="536" y2="503" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <text x="542" y="440" fill="#a78bfa" font-size="8">4 · SNS</text>
+      <line x1="618" y1="424" x2="618" y2="503" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <text x="624" y="440" fill="#a78bfa" font-size="8">3 · DynamoDB</text>
+      <line x1="700" y1="424" x2="700" y2="503" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ah-slate)"/>
+      <line x1="290" y1="556" x2="300" y2="649" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <line x1="372" y1="556" x2="350" y2="649" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <line x1="454" y1="556" x2="470" y2="649" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <line x1="536" y1="556" x2="600" y2="649" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <line x1="618" y1="556" x2="720" y2="649" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#ah-violet)"/>
+      <line x1="700" y1="556" x2="850" y2="649" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#ah-slate)"/>
 
-      <rect x="280" y="110" width="190" height="60" rx="6" fill="#0f172a"/>
-      <rect x="280" y="110" width="190" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="375" y="134" fill="white" font-size="12" font-weight="600" text-anchor="middle">Amazon S3</text>
-      <text x="375" y="151" fill="#94a3b8" font-size="9" text-anchor="middle">website endpoint · HTTP</text>
+      <!-- Usuario -->
+      <rect x="40" y="231" width="130" height="56" rx="6" fill="#0f172a"/>
+      <rect x="40" y="231" width="130" height="56" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="105" y="254" fill="white" font-size="12" font-weight="600" text-anchor="middle">Usuario</text>
+      <text x="105" y="271" fill="#94a3b8" font-size="9" text-anchor="middle">navegador</text>
 
-      <rect x="280" y="290" width="190" height="60" rx="6" fill="#0f172a"/>
-      <rect x="280" y="290" width="190" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="375" y="314" fill="white" font-size="12" font-weight="600" text-anchor="middle">API Gateway</text>
-      <text x="375" y="331" fill="#94a3b8" font-size="9" text-anchor="middle">HTTP API · HTTPS público</text>
+      <!-- Internet Gateway -->
+      <rect x="250" y="146" width="230" height="34" rx="6" fill="#0f172a"/>
+      <rect x="250" y="146" width="230" height="34" rx="6" fill="rgba(51, 65, 85, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="365" y="160" fill="white" font-size="11" font-weight="600" text-anchor="middle">Internet Gateway</text>
+      <text x="365" y="173" fill="#94a3b8" font-size="8" text-anchor="middle">ruta 0.0.0.0/0 desde subredes públicas</text>
 
-      <rect x="280" y="500" width="190" height="60" rx="6" fill="#0f172a"/>
-      <rect x="280" y="500" width="190" height="60" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="375" y="524" fill="white" font-size="12" font-weight="600" text-anchor="middle">EventBridge</text>
-      <text x="375" y="541" fill="#94a3b8" font-size="9" text-anchor="middle">regla programada</text>
+      <!-- Subredes públicas -->
+      <rect x="250" y="192" width="235" height="110" rx="8" fill="rgba(14, 165, 233, 0.05)" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="262" y="208" fill="#38bdf8" font-size="9" font-weight="600">Subred pública · AZ a</text>
+      <text x="262" y="222" fill="#64748b" font-size="8">10.20.0.0/24</text>
+      <rect x="505" y="192" width="235" height="110" rx="8" fill="rgba(14, 165, 233, 0.05)" stroke="#38bdf8" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="517" y="208" fill="#38bdf8" font-size="9" font-weight="600">Subred pública · AZ b</text>
+      <text x="517" y="222" fill="#64748b" font-size="8">10.20.1.0/24</text>
 
-      <!-- Zona de cómputo fuera de VPC -->
-      <rect x="510" y="120" width="240" height="330" rx="10" fill="none" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/>
-      <text x="522" y="140" fill="#34d399" font-size="9" font-weight="600">Red administrada de AWS</text>
-      <text x="522" y="153" fill="#34d399" font-size="8">fuera de VPC</text>
+      <!-- ALB (nodos en ambas zonas) -->
+      <rect x="262" y="232" width="211" height="56" rx="6" fill="#0f172a"/>
+      <rect x="262" y="232" width="211" height="56" rx="6" fill="rgba(8, 47, 73, 0.6)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="367" y="254" fill="white" font-size="11" font-weight="600" text-anchor="middle">Application Load Balancer</text>
+      <text x="367" y="271" fill="#94a3b8" font-size="9" text-anchor="middle">HTTP 80 · nodo AZ a</text>
+      <rect x="517" y="232" width="211" height="56" rx="6" fill="#0f172a"/>
+      <rect x="517" y="232" width="211" height="56" rx="6" fill="rgba(8, 47, 73, 0.6)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="622" y="254" fill="white" font-size="11" font-weight="600" text-anchor="middle">Application Load Balancer</text>
+      <text x="622" y="271" fill="#94a3b8" font-size="9" text-anchor="middle">HTTP 80 · nodo AZ b</text>
 
-      <rect x="530" y="165" width="200" height="50" rx="6" fill="#0f172a"/>
-      <rect x="530" y="165" width="200" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="630" y="187" fill="white" font-size="11" font-weight="600" text-anchor="middle">ListarEventos</text>
-      <text x="630" y="202" fill="#94a3b8" font-size="8" text-anchor="middle">Python 3.12</text>
+      <!-- Subredes privadas -->
+      <rect x="250" y="340" width="235" height="116" rx="8" fill="rgba(6, 78, 59, 0.15)" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="262" y="356" fill="#34d399" font-size="9" font-weight="600">Subred privada · AZ a</text>
+      <text x="262" y="370" fill="#64748b" font-size="8">10.20.10.0/24</text>
+      <rect x="505" y="340" width="235" height="116" rx="8" fill="rgba(6, 78, 59, 0.15)" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="517" y="356" fill="#34d399" font-size="9" font-weight="600">Subred privada · AZ b</text>
+      <text x="517" y="370" fill="#64748b" font-size="8">10.20.11.0/24</text>
 
-      <rect x="530" y="230" width="200" height="50" rx="6" fill="#0f172a"/>
-      <rect x="530" y="230" width="200" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="630" y="252" fill="white" font-size="11" font-weight="600" text-anchor="middle">Inscribir</text>
-      <text x="630" y="267" fill="#94a3b8" font-size="8" text-anchor="middle">valida · deduplica · cupo</text>
+      <!-- Tareas ECS Fargate -->
+      <rect x="262" y="378" width="211" height="46" rx="6" fill="#0f172a"/>
+      <rect x="262" y="378" width="211" height="46" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="367" y="396" fill="white" font-size="11" font-weight="600" text-anchor="middle">Tarea ECS Fargate</text>
+      <text x="367" y="412" fill="#94a3b8" font-size="8" text-anchor="middle">FastAPI · puerto 8000 · AZ a</text>
+      <rect x="517" y="378" width="211" height="46" rx="6" fill="#0f172a"/>
+      <rect x="517" y="378" width="211" height="46" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="622" y="396" fill="white" font-size="11" font-weight="600" text-anchor="middle">Tarea ECS Fargate</text>
+      <text x="622" y="412" fill="#94a3b8" font-size="8" text-anchor="middle">FastAPI · puerto 8000 · AZ b</text>
 
-      <rect x="530" y="295" width="200" height="50" rx="6" fill="#0f172a"/>
-      <rect x="530" y="295" width="200" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="630" y="317" fill="white" font-size="11" font-weight="600" text-anchor="middle">MisInscripciones</text>
-      <text x="630" y="332" fill="#94a3b8" font-size="8" text-anchor="middle">consulta por email</text>
+      <!-- Aviso sin NAT (tapa las líneas que cruzan) -->
+      <rect x="330" y="462" width="330" height="17" rx="4" fill="#020617" stroke="#fb7185" stroke-width="1"/>
+      <text x="495" y="474" fill="#fb7185" font-size="9" font-weight="600" text-anchor="middle">sin NAT: sin ruta a Internet desde las subredes privadas</text>
 
-      <rect x="530" y="360" width="200" height="50" rx="6" fill="#0f172a"/>
-      <rect x="530" y="360" width="200" height="50" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
-      <text x="630" y="382" fill="white" font-size="11" font-weight="600" text-anchor="middle">Recordatorio</text>
-      <text x="630" y="397" fill="#94a3b8" font-size="8" text-anchor="middle">eventos próximas 24 h</text>
+      <!-- Endpoints de VPC (dentro de la VPC, subredes privadas) -->
+      <rect x="250" y="482" width="490" height="112" rx="8" fill="rgba(76, 29, 149, 0.12)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,4"/>
 
-      <!-- Servicios de datos y mensajería -->
-      <rect x="800" y="110" width="160" height="60" rx="6" fill="#0f172a"/>
-      <rect x="800" y="110" width="160" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-      <text x="880" y="134" fill="white" font-size="12" font-weight="600" text-anchor="middle">DynamoDB</text>
-      <text x="880" y="151" fill="#94a3b8" font-size="9" text-anchor="middle">Eventos · Inscripciones</text>
+      <rect x="252" y="504" width="76" height="52" rx="6" fill="#0f172a"/>
+      <rect x="252" y="504" width="76" height="52" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="290" y="526" fill="white" font-size="9" font-weight="600" text-anchor="middle">ECR API</text>
+      <text x="290" y="541" fill="#94a3b8" font-size="8" text-anchor="middle">interfaz</text>
 
-      <rect x="800" y="290" width="160" height="60" rx="6" fill="#0f172a"/>
-      <rect x="800" y="290" width="160" height="60" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
-      <text x="880" y="314" fill="white" font-size="12" font-weight="600" text-anchor="middle">Amazon SNS</text>
-      <text x="880" y="331" fill="#94a3b8" font-size="9" text-anchor="middle">topic por evento · SMTP</text>
+      <rect x="334" y="504" width="76" height="52" rx="6" fill="#0f172a"/>
+      <rect x="334" y="504" width="76" height="52" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="372" y="526" fill="white" font-size="9" font-weight="600" text-anchor="middle">ECR Docker</text>
+      <text x="372" y="541" fill="#94a3b8" font-size="8" text-anchor="middle">interfaz</text>
 
-      <rect x="800" y="440" width="160" height="60" rx="6" fill="#0f172a"/>
-      <rect x="800" y="440" width="160" height="60" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
-      <text x="880" y="464" fill="white" font-size="12" font-weight="600" text-anchor="middle">Amazon SQS</text>
-      <text x="880" y="481" fill="#94a3b8" font-size="9" text-anchor="middle">DLQ · retención 14 días</text>
+      <rect x="416" y="504" width="76" height="52" rx="6" fill="#0f172a"/>
+      <rect x="416" y="504" width="76" height="52" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="454" y="520" fill="white" font-size="9" font-weight="600" text-anchor="middle">CloudWatch</text>
+      <text x="454" y="532" fill="white" font-size="9" font-weight="600" text-anchor="middle">Logs</text>
+      <text x="454" y="546" fill="#94a3b8" font-size="8" text-anchor="middle">interfaz</text>
 
-      <rect x="800" y="540" width="160" height="50" rx="6" fill="#0f172a"/>
-      <rect x="800" y="540" width="160" height="50" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-      <text x="880" y="561" fill="white" font-size="12" font-weight="600" text-anchor="middle">CloudWatch</text>
-      <text x="880" y="578" fill="#94a3b8" font-size="9" text-anchor="middle">logs y errores</text>
+      <rect x="498" y="504" width="76" height="52" rx="6" fill="#0f172a"/>
+      <rect x="498" y="504" width="76" height="52" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="536" y="526" fill="white" font-size="9" font-weight="600" text-anchor="middle">SNS</text>
+      <text x="536" y="541" fill="#94a3b8" font-size="8" text-anchor="middle">interfaz</text>
+
+      <rect x="580" y="504" width="76" height="52" rx="6" fill="#0f172a"/>
+      <rect x="580" y="504" width="76" height="52" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="618" y="526" fill="white" font-size="9" font-weight="600" text-anchor="middle">DynamoDB</text>
+      <text x="618" y="541" fill="#94a3b8" font-size="8" text-anchor="middle">gateway</text>
+
+      <rect x="662" y="504" width="76" height="52" rx="6" fill="#0f172a"/>
+      <rect x="662" y="504" width="76" height="52" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="700" y="526" fill="white" font-size="9" font-weight="600" text-anchor="middle">S3</text>
+      <text x="700" y="541" fill="#94a3b8" font-size="8" text-anchor="middle">gateway</text>
+
+      <!-- Servicios regionales (fuera de la VPC) -->
+      <rect x="252" y="650" width="160" height="52" rx="6" fill="#0f172a"/>
+      <rect x="252" y="650" width="160" height="52" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="332" y="672" fill="white" font-size="11" font-weight="600" text-anchor="middle">Amazon ECR</text>
+      <text x="332" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">imágenes Docker</text>
+
+      <rect x="424" y="650" width="130" height="52" rx="6" fill="#0f172a"/>
+      <rect x="424" y="650" width="130" height="52" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="489" y="672" fill="white" font-size="10" font-weight="600" text-anchor="middle">CloudWatch Logs</text>
+      <text x="489" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">logs · retención 7 días</text>
+
+      <rect x="566" y="650" width="120" height="52" rx="6" fill="#0f172a"/>
+      <rect x="566" y="650" width="120" height="52" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="626" y="672" fill="white" font-size="11" font-weight="600" text-anchor="middle">Amazon SNS</text>
+      <text x="626" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">topic por evento</text>
+
+      <rect x="698" y="650" width="120" height="52" rx="6" fill="#0f172a"/>
+      <rect x="698" y="650" width="120" height="52" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="758" y="672" fill="white" font-size="11" font-weight="600" text-anchor="middle">DynamoDB</text>
+      <text x="758" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">2 tablas on-demand</text>
+
+      <rect x="830" y="650" width="120" height="52" rx="6" fill="#0f172a"/>
+      <rect x="830" y="650" width="120" height="52" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="890" y="672" fill="white" font-size="11" font-weight="600" text-anchor="middle">Amazon S3</text>
+      <text x="890" y="688" fill="#94a3b8" font-size="8" text-anchor="middle">sitio público · HTTP</text>
 
       <!-- Leyenda -->
-      <text x="40" y="700" fill="#94a3b8" font-size="9" font-weight="600">Leyenda</text>
-      <line x1="110" y1="696" x2="140" y2="696" stroke="#22d3ee" stroke-width="1.5"/><text x="148" y="700" fill="#94a3b8" font-size="9">tráfico público (HTTP/HTTPS)</text>
-      <line x1="340" y1="696" x2="370" y2="696" stroke="#fbbf24" stroke-width="1.5"/><text x="378" y="700" fill="#94a3b8" font-size="9">disparo programado</text>
-      <line x1="540" y1="696" x2="570" y2="696" stroke="#a78bfa" stroke-width="1.5"/><text x="578" y="700" fill="#94a3b8" font-size="9">acceso a datos (IAM)</text>
-      <line x1="740" y1="696" x2="770" y2="696" stroke="#fb923c" stroke-width="1.5"/><text x="778" y="700" fill="#94a3b8" font-size="9">mensajería</text>
-      <line x1="110" y1="716" x2="140" y2="716" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,3"/><text x="148" y="720" fill="#94a3b8" font-size="9">errores y logs</text>
-      <rect x="340" y="708" width="30" height="14" rx="3" fill="none" stroke="#34d399" stroke-width="1" stroke-dasharray="4,4"/><text x="378" y="720" fill="#94a3b8" font-size="9">fuera de VPC</text>
+      <line x1="40" y1="748" x2="70" y2="748" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="78" y="752" fill="#94a3b8" font-size="9">tráfico HTTP público</text>
+      <line x1="250" y1="748" x2="280" y2="748" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="288" y="752" fill="#94a3b8" font-size="9">acceso a servicios por endpoint</text>
+      <line x1="540" y1="748" x2="570" y2="748" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+      <text x="578" y="752" fill="#94a3b8" font-size="9">endpoint de gateway (S3 y DynamoDB)</text>
     </svg>
   </div>
 
@@ -165,27 +214,25 @@
     <div class="card">
       <div class="card-header"><div class="card-dot" style="background:#22d3ee"></div><h3>Qué está expuesto</h3></div>
       <ul>
-        <li>• S3 por HTTP. Sin HTTPS propio.</li>
-        <li>• API Gateway por HTTPS. Sin autenticación.</li>
-        <li>• SNS envía correos hacia Internet.</li>
-        <li>• El resto no tiene puntos de entrada públicos.</li>
+        <li>• Sitio estático en S3 por HTTP (puerto 80).</li>
+        <li>• ALB por HTTP (puerto 80).</li>
+        <li>• Todo lo demás es privado: tareas ECS, endpoints, DynamoDB, SNS, ECR y CloudWatch Logs.</li>
       </ul>
     </div>
     <div class="card">
-      <div class="card-header"><div class="card-dot" style="background:#34d399"></div><h3>Por qué sin VPC</h3></div>
+      <div class="card-header"><div class="card-dot" style="background:#34d399"></div><h3>Por qué esta red</h3></div>
       <ul>
-        <li>• Ningún recurso del proyecto es privado.</li>
-        <li>• Sin VPC no hay subredes, NAT ni security groups que administrar.</li>
-        <li>• El control de acceso queda en IAM.</li>
+        <li>• Sin NAT porque las tareas no necesitan salir a Internet.</li>
+        <li>• Los endpoints cubren DynamoDB, SNS, ECR y CloudWatch Logs, y S3 por gateway.</li>
+        <li>• Las subredes privadas no tienen ruta a Internet y solo alcanzan servicios AWS por endpoints.</li>
       </ul>
     </div>
     <div class="card">
-      <div class="card-header"><div class="card-dot" style="background:#fbbf24"></div><h3>Si se usara VPC</h3></div>
+      <div class="card-header"><div class="card-dot" style="background:#fbbf24"></div><h3>Costo a considerar</h3></div>
       <ul>
-        <li>• Subredes privadas en dos zonas.</li>
-        <li>• Endpoints de Gateway para DynamoDB y S3.</li>
-        <li>• Endpoints de interfaz para SNS y SQS.</li>
-        <li>• NAT solo si una función necesitara salir a Internet.</li>
+        <li>• Los endpoints de interfaz cobran por hora y por zona. Son cuatro endpoints en dos zonas.</li>
+        <li>• Los endpoints de gateway (S3 y DynamoDB) no tienen cargo por hora.</li>
+        <li>• El ALB y la tarea mínima cobran por hora aunque no haya tráfico.</li>
       </ul>
     </div>
   </div>

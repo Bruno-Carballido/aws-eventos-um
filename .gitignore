@@ -3,3 +3,5 @@ __pycache__/
 .sam/
 .aws-sam/
 web/node_modules/
+.superpowers/
+.pytest_cache/
