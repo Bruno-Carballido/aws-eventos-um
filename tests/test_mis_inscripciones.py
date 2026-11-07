@@ -42,6 +42,14 @@ class TestMisInscripciones(unittest.TestCase):
         self.assertEqual(resp["statusCode"], 400)
         tabla.query.assert_not_called()
 
+    def test_email_formato_invalido_devuelve_400(self):
+        app, tabla = self._app([])
+
+        resp = app.handler({"queryStringParameters": {"email": "notanemail"}}, None)
+
+        self.assertEqual(resp["statusCode"], 400)
+        tabla.query.assert_not_called()
+
     def test_email_normalizado(self):
         app, tabla = self._app([])
 
