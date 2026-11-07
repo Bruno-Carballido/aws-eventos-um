@@ -28,7 +28,7 @@ Cada Lambda loguea en CloudWatch Logs.
   modo pago por petición. Los eventos llevan `cupo` e `inscritos` (contador
   atómico que bloquea la inscripción cuando se llena).
 - **SNS**: un topic por evento; los inscriptos se suscriben con su email.
-- **EventBridge Scheduler**: dispara el recordatorio cada 1 hora; solo notifica
+- **EventBridge** (regla programada): dispara el recordatorio cada 1 hora; solo notifica
   eventos dentro de las próximas 24 h y marca `notificado` para no repetir.
 - **SQS (DLQ)**: cola muerta `recordatorio-dlq` para los eventos programados que
   fallen tras 2 reintentos; permite investigar fallos sin perder el evento.
@@ -81,6 +81,10 @@ scripts/seed_eventos.py
 - La inscripción se modela como un *domain event* (`InscripcionCreada`): la API
   responde apenas se registra, y la confirmación se procesa de forma asíncrona
   vía SNS — desacoplando el flujo de la respuesta HTTP.
+- **Limitación**: SNS solo entrega a suscripciones confirmadas. El correo de
+  confirmación de inscripción se publica en el momento de inscribirse, así que quien
+  todavía no confirmó la suscripción no lo recibe. Lo primero que llega es el correo
+  de confirmación de SNS, cuyo texto no es personalizable.
 - **Idempotencia**: dedup por email+evento en la inscripción y atributo
   `notificado` en el evento para que un recordatorio no se envíe dos veces,
   aunque la Lambda programada se ejecute repetidamente.

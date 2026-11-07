@@ -49,7 +49,11 @@ El flujo de datos es el siguiente:
    correos. La inscripción se modela así como un *domain event*
    (`InscripcionCreada`) de procesamiento asíncrono, tal como se vio en la
    unidad de arquitecturas orientadas a eventos.
-6. **Recordatorio.** Amazon EventBridge Scheduler dispara la función Lambda
+   *Limitación*: SNS solo entrega a suscripciones confirmadas. Quien todavía no
+   confirmó el clic de SNS no recibe el mensaje de confirmación de inscripción; lo
+   primero que le llega es el correo de confirmación de SNS, cuyo texto no es
+   personalizable.
+6. **Recordatorio.** Una regla programada de Amazon EventBridge dispara la función Lambda
    `Recordatorio` cada hora. Esta identifica los eventos que ocurren en las
    próximas 24 horas y publica un recordatorio en el topic SNS de cada evento.
    Un atributo `notificado` en el ítem del evento garantiza que cada
@@ -80,7 +84,7 @@ El flujo de datos es el siguiente:
                      └──────────────────┘
 ┌──────────────────┐  cada 1 h  ┌──────────────────┐
 │ EventBridge      │───────────►│ Lambda           │──► SNS (recordatorio)
-│ Scheduler        │            │ Recordatorio     │──► DynamoDB (marca notificado)
+│ (regla)          │            │ Recordatorio     │──► DynamoDB (marca notificado)
 └──────────────────┘            └────────┬─────────┘
         fallos tras reintentos ─────────► SQS (DLQ)
 
@@ -98,7 +102,7 @@ El flujo de datos es el siguiente:
 | Lambda | Cuatro funciones (Python): listar eventos, inscribir, mis inscripciones, recordatorio. |
 | DynamoDB | Tablas `Eventos` e `Inscripciones` (GSI por evento y por email), modo pago por petición. |
 | SNS | Confirmación y recordatorios por email; un topic por evento. |
-| EventBridge Scheduler | Dispara la función de recordatorio cada hora. |
+| EventBridge (regla programada) | Dispara la función de recordatorio cada hora. |
 | SQS | Cola muerta (DLQ) para los eventos programados que fallan tras reintentos. |
 | CloudWatch | Logs, métricas y errores de las funciones y la API. |
 | IAM | Permisos de mínimo privilegio de cada función (vía LabRole en Academy). |
@@ -122,7 +126,7 @@ gestionada de AWS salvo el acceso de los usuarios:
 | 2 | Navegador → API Gateway | HTTPS (edge global de AWS) | API abierta (demo) + CORS |
 | 3 | API Gateway → Lambda | Invocación privada dentro de la red de AWS | Resource-based policy de la función |
 | 4 | Lambda → DynamoDB / SNS / SQS | Endpoints de AWS por HTTPS | IAM mínimo privilegio por función |
-| 5 | EventBridge Scheduler → Lambda | Invocación privada; DLQ a SQS | Resource-based policy + IAM |
+| 5 | EventBridge (regla programada) → Lambda | Invocación privada; DLQ a SQS | Resource-based policy + IAM |
 | 6 | SNS → correo de usuarios | Salida SMTP hacia Internet | Suscripciones confirmadas por el usuario |
 
 **Las funciones corren fuera de VPC, y es una decisión de arquitectura.** Según
@@ -165,6 +169,11 @@ delante del bucket resolvería el HTTPS y permitiría un bucket privado.
 - **Sin credenciales en el código**: la configuración (tablas, remitente) viaja
   en variables de entorno de Lambda; las credenciales las provee el rol de
   ejecución vía IAM, nunca llaves embebidas.
+- **Secretos (AWS Secrets Manager): no se usa, y es deliberado.** El proyecto no
+  maneja secretos de terceros: el acceso a DynamoDB, SNS y SQS sale del rol
+  `LabRole` con credenciales temporales. El remitente es un parámetro de
+  configuración, no un secreto. Si se integrara un proveedor externo con API key,
+  se guardaría en Secrets Manager (o Parameter Store para valores simples).
 - **HTTPS en la API**: API Gateway expone el endpoint solo por HTTPS.
 - **Bucket del sitio**: público de solo lectura (`s3:GetObject`), por ser un
   sitio estático sin HTTPS; sin escritura pública.
@@ -222,7 +231,7 @@ El presupuesto de AWS Academy es limitado; el diseño es de bajo consumo:
 - **SNS**: se cobra por solicitudes de API y por entrega de notificaciones[3];
   cada inscripción y cada recordatorio son un par de mensajes pequeños —
   centavos por mes con volúmenes de curso.
-- **API Gateway y EventBridge Scheduler**: costo por millón de invocaciones y
+- **API Gateway y EventBridge**: costo por millón de invocaciones y
   por invocación programada, despreciable en este volumen.
 - **S3**: almacenamiento de un sitio estático (pocos KB) y transferencia de
   salida mínima.
@@ -238,12 +247,12 @@ los créditos del laboratorio.
 2. Diagrama de arquitectura (imagen).
 3. Template SAM/CloudFormation desplegable en Academy (`template.yaml`).
 4. Scripts auxiliares (`scripts/seed_eventos.py`).
-5. Sitio web estático (`web/index.html`).
+5. Sitio web estático (`web/`, compilado con Vite a `web/dist/`).
 6. Demo end-to-end: listado, inscripción, confirmación y recordatorio.
 
 ## 10. Demo
 
-1. Desplegar el stack (`sam build && sam deploy --guided`).
+1. Desplegar el stack (`sam build` y `sam deploy` con `RolEjecucion=arn:aws:iam::<cuenta>:role/LabRole`; ver README).
 2. Cargar eventos de prueba (`python scripts/seed_eventos.py`).
 3. Construir el sitio (`cd web && npm run build`), apuntar `web/src/config.js`
    a la URL de la API y publicar `web/dist/` en el bucket S3.
