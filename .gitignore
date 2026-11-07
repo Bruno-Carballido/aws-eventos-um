@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 .sam/
 .aws-sam/
+web/node_modules/

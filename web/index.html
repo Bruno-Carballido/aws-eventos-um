@@ -1,67 +1,12 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Eventos UM</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-  .evento { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
-  .evento h3 { margin: 0 0 .25rem; }
-  .meta { color: #666; font-size: .9rem; }
-  form { display: flex; flex-direction: column; gap: .5rem; max-width: 420px; }
-  input, button { padding: .5rem; font-size: 1rem; }
-  #mensaje { margin-top: .5rem; font-weight: bold; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Eventos UM — Inscripción y recordatorios</title>
 </head>
 <body>
-  <h1>Eventos</h1>
-  <div id="lista"><p>Cargando…</p></div>
-
-  <h2>Inscribirse</h2>
-  <form id="form-inscripcion">
-    <select id="eventoId" required><option value="">Elegí un evento…</option></select>
-    <input id="nombre" placeholder="Tu nombre" required>
-    <input id="email" type="email" placeholder="Tu email" required>
-    <button type="submit">Inscribirme</button>
-  </form>
-  <p id="mensaje"></p>
-
-<script>
-const API = window.API_URL || "https://CAMBIAR-PEGA-AQUI"; // pegar el Output ApiUrl del deploy
-
-async function cargarEventos() {
-  const r = await fetch(API + "/eventos");
-  const eventos = await r.json();
-  document.getElementById("lista").innerHTML = eventos.map(e => `
-    <div class="evento">
-      <h3>${e.titulo}</h3>
-      <p>${e.descripcion || ""}</p>
-      <p class="meta">${new Date(e.fecha).toLocaleString()} — ${e.lugar || ""}</p>
-    </div>`).join("");
-  document.getElementById("eventoId").innerHTML =
-    '<option value="">Elegí un evento…</option>' +
-    eventos.map(e => `<option value="${e.eventoId}">${e.titulo}</option>`).join("");
-}
-
-document.getElementById("form-inscripcion").addEventListener("submit", async ev => {
-  ev.preventDefault();
-  const r = await fetch(API + "/inscripciones", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      eventoId: document.getElementById("eventoId").value,
-      nombre: document.getElementById("nombre").value,
-      email: document.getElementById("email").value,
-    }),
-  });
-  const data = await r.json();
-  document.getElementById("mensaje").textContent =
-    r.ok ? "Inscripción registrada: te llegó un email de confirmación." :
-           "Error: " + (data.error || r.status);
-});
-
-cargarEventos();
-</script>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
