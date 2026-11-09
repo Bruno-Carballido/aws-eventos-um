@@ -169,12 +169,14 @@ Por instrucción del estudiante, se deshacen todos los cambios para no tener gas
 
 | Servicio | Qué necesita | Lo que permite Academy | Rol en producción |
 |---|---|---|---|
-| ECS, descarga de la imagen | Leer la imagen desde ECR | LabRole como rol de ejecución | `ecsTaskExecutionRole` |
-| ECS, registros | Escribir en CloudWatch Logs | LabRole como rol de ejecución | `ecsTaskExecutionRole` |
-| API y planificador | Leer y escribir en DynamoDB, publicar en SNS | LabRole como rol de tarea | `backendEventosTaskRole` |
-| Application Auto Scaling | Leer métricas y cambiar la cantidad de tareas | Rol vinculado al servicio `AWSServiceRoleForApplicationAutoScaling_ECSService` | Sin cambios |
-| S3 (sitio web) | Lectura pública del bucket | Política de bucket de solo lectura pública | `cloudfrontOACPolicy`, si se agrega CloudFront |
-| Disparador externo del planificador | No aplica | No se pueden crear roles para un disparador externo | No aplica, porque el planificador queda dentro de la tarea |
+| ECS, descarga de la imagen | Leer la imagen desde ECR | LabRole (rol de ejecución) | `ecsTaskExecutionRole` |
+| ECS, registros | Escribir en CloudWatch Logs | LabRole (rol de ejecución) | `ecsTaskExecutionRole` |
+| API y planificador | Leer y escribir en DynamoDB, publicar en SNS | LabRole (rol de tarea) | `backendEventosTaskRole` |
+| Application Auto Scaling | Cambiar la cantidad de tareas | Rol vinculado al servicio | Sin cambios |
+| S3 (sitio web) | Lectura pública del bucket | Política de bucket pública | `cloudfrontOACPolicy` (con CloudFront) |
+| Disparador externo | No aplica | No se pueden crear roles nuevos | No aplica |
+
+Application Auto Scaling usa el rol vinculado al servicio `AWSServiceRoleForApplicationAutoScaling_ECSService`, administrado por AWS. El planificador corre dentro de la tarea, por lo que no necesita un disparador externo ni un rol adicional.
 
 ### 6.3 Roles de mínimo privilegio en producción
 
