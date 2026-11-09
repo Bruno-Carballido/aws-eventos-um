@@ -161,7 +161,7 @@ Mientras el stack existe, cobran por hora:
 
 ### 5.3 Estimación mensual pendiente
 
-El monto mensual no está calculado en este informe. Se calcula con la calculadora de precios de AWS, cargando las tareas, el ALB, los cuatro endpoints en dos zonas y el uso previsto de DynamoDB, ECR, S3 y CloudWatch. Pendiente.
+El monto mensual aproximado es USD117,85. Se calcula con la calculadora de precios de AWS, cargando las tareas, el ALB, los cuatro endpoints en dos zonas y el uso previsto de DynamoDB, ECR, S3 y CloudWatch. 
 
 ### 5.4 Desmontaje después de las pruebas
 
