@@ -157,7 +157,7 @@ Mientras el stack existe, cobran por hora:
 
 ### 5.2 Componentes por uso
 
-DynamoDB, ECR, S3 y CloudWatch Logs cobran según el consumo. El consumo de la demo no se midió.
+<img width="1261" height="420" alt="image" src="https://github.com/user-attachments/assets/a0230b09-05ff-46ff-9e87-ed91bc6d842f" />
 
 ### 5.3 Estimación mensual pendiente
 
