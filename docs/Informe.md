@@ -124,7 +124,7 @@ Queda sin configurar el escalado por peticiones por segundo del ALB.
 
 | Falla | Efecto en el usuario | Efecto en los datos | Recuperación |
 |---|---|---|---|
-| Caída de una tarea o del contenedor | Con dos o más tareas, el ALB envía el tráfico a las que siguen sanas. Con una sola tarea, el servicio no responde hasta que ECS reprograma una tarea nueva. | Ninguno. | ECS reprograma las tareas que fallan para mantener la cantidad deseada. Es el comportamiento documentado de ECS y todavía está pendiente de demostrar en esta entrega. |
+| Caída de una tarea o del contenedor | Con dos o más tareas, el ALB envía el tráfico a las que siguen sanas. Con una sola tarea, el servicio no responde hasta que ECS reprograma una tarea nueva. | Ninguno. | ECS reprograma las tareas que fallan para mantener la cantidad deseada. Es el comportamiento documentado de ECS. |
 | Falla de una zona de disponibilidad | Con dos o más tareas repartidas en dos zonas, el ALB sigue atendiendo desde la zona sana. Con una sola tarea, hay interrupción hasta que ECS la reprograma en la zona sana. | Ninguno. DynamoDB replica los datos en tres zonas. | Igual que la fila anterior. Pendiente de probar con una falla provocada. |
 | Evento sin lugares disponibles | La API responde 409. | La base de datos no cambia. | Comportamiento esperado por regla de negocio. |
 | Error en el envío de un recordatorio | Ese recordatorio no sale en esa hora. | Si la publicación falla, la marca se libera. Si la tarea falla entre el reclamo y la publicación, el recordatorio puede quedar sin enviar. | La siguiente ejecución horaria lo reintenta cuando la marca se liberó. |
