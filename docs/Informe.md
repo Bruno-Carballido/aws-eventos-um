@@ -145,7 +145,7 @@ Mientras el stack existe, cobran por hora:
 
 ### 5.2 Componentes por uso
 
-<img width="1261" height="420" alt="image" src="https://github.com/user-attachments/assets/a0230b09-05ff-46ff-9e87-ed91bc6d842f" />
+![Estimación de componentes por uso en la calculadora de precios de AWS](estimacion-costos.png)
 
 ### 5.3 Estimación mensual pendiente
 
