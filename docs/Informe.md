@@ -1,5 +1,9 @@
 # Informe del proyecto sobre el sistema de inscripción y recordatorios para eventos
 
+**Integrantes del equipo:** Augusto Calastretti, Augusto Cambon, Bruno Carballido.
+
+**Repositorio:** https://github.com/Bruno-Carballido/aws-eventos-um
+
 Este informe describe la arquitectura, la seguridad, la escalabilidad, la resiliencia, los costos y los permisos de IAM del sistema. El backend corre en contenedores con Amazon ECS y AWS Fargate, detrás de un Application Load Balancer (ALB), dentro de una VPC propia con subredes privadas y endpoints de VPC. Todo lo que se describe como verificado se desplegó y probó en AWS Academy, en la región us-east-1.
 
 ## 1. Arquitectura
@@ -22,23 +26,7 @@ La versión anterior del proyecto usaba Lambda, API Gateway, una regla de EventB
 
 ### 1.2 Flujo de tráfico
 
-```
-Navegador ──► S3 (sitio estático, website endpoint HTTP)
-     │
-     │ HTTP (puerto 80)
-     ▼
-Application Load Balancer (subredes públicas, dos zonas)
-     │
-     │ HTTP (puerto 8000)
-     ▼
-ECS Fargate, FastAPI (subredes privadas, de 1 a 3 tareas)
-     │
-     │ endpoints de VPC (sin NAT y sin salida a Internet)
-     ├──► DynamoDB (Eventos, Inscripciones)
-     ├──► SNS (un topic por evento)
-     ├──► CloudWatch Logs
-     └──► ECR (descarga de la imagen)
-```
+![Diagrama de arquitectura: navegador, S3, ALB, ECS Fargate y servicios por endpoints de VPC](diagrama-arquitectura-vpc.svg)
 
 1. El usuario abre el sitio web en S3.
 2. La página envía las solicitudes al DNS del ALB en el puerto 80.
